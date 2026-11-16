@@ -19,6 +19,7 @@ reply readings and the deterministic replanner, so the demo works offline.
 import json
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Callable
 
 from pydantic import ValidationError
@@ -166,8 +167,10 @@ class FollowUpAgent:
         snapshot: datetime,
         llm: LLM | None = None,
         planner: Callable | None = None,
+        audit_path: str | Path | None = None,
     ):
         self.data = data
+        self.audit_path = Path(audit_path) if audit_path else None
         self.snapshot = snapshot
         self.llm = llm
         self.planner = planner
@@ -306,14 +309,19 @@ Allowed decisions: {serialize(sorted(allowed))}
     # ---------------- replan ----------------
 
     def replan(self, request: TransferRequest, now: datetime) -> dict:
+        planner_error = None
         if self.planner is not None:
             try:
                 return self.planner(self, request, now)
             except Exception as error:  # planner failure must not stop follow-up
                 logger.warning("Planner failed, using rules: %s", error)
-        return deterministic_replan(
+                planner_error = f"{type(error).__name__}: {error}"
+        result = deterministic_replan(
             request, self.data.stock(request.din), self.snapshot, now
         )
+        if planner_error:
+            result["planner_error"] = planner_error
+        return result
 
     # ---------------- main check ----------------
 
@@ -322,27 +330,48 @@ Allowed decisions: {serialize(sorted(allowed))}
         if request.status != "open":
             return None
 
+        trace = []
+
+        def step(message):
+            """Record one step in the action's trace and in the log."""
+            trace.append(message)
+            logger.info("%s %s | %s", now.isoformat(), request_id, message)
+
         reading = None
         flags = []
+
+        if not replies:
+            step("No new replies.")
 
         for reply in sorted(replies, key=lambda item: item.received_at):
             screen = inspect_supplier_email(reply.text)
             if screen.suspicious:
+                step(f"Security screen FLAGGED reply from {reply.sender}: {', '.join(screen.reasons)}. Not sent to model.")
                 flags.extend(f"reply from {reply.sender}: {reason}" for reason in screen.reasons)
                 continue
+            step(f"Security screen passed reply from {reply.sender}.")
 
             try:
                 reading = self.read_reply(reply, request)
             except Exception as error:  # model down or bad output: a human reads it
                 logger.warning("Reply reader failed: %s", error)
+                step(f"Reader failed ({type(error).__name__}); reply needs a human.")
                 flags.append(f"Could not read reply automatically ({type(error).__name__}).")
                 continue
 
+            source = "reader agent" if self.llm else "scripted reading"
+            step(
+                f"Reading ({source}): {reading.kind}, confirmed_units={reading.confirmed_units}, "
+                f"confidence={reading.confidence}."
+            )
+
             reading, problems = check_reading(reading, request)
             if problems:
+                step(f"Reading REJECTED by code checks: {'; '.join(problems)}")
                 flags.extend(problems)
                 reading = None
                 continue
+            step(f"Reading passed code checks (kind after checks: {reading.kind}).")
 
             if reading.confirmed_units is not None:
                 request.units_confirmed = max(
@@ -356,17 +385,26 @@ Allowed decisions: {serialize(sorted(allowed))}
             now,
             self.nudges[request_id],
         )
+        step(
+            f"Facts: overdue {facts['hours_overdue']}h, outstanding {facts['units_outstanding']}/"
+            f"{facts['units_requested']}, site {facts['receiving_site']} cover "
+            f"{facts['receiving_cover_days']} days, nudges sent {facts['nudges_sent']}."
+        )
 
         message_to = message_draft = None
+        allowed = None
         rule = hard_rule(request, facts, flags)
 
         if rule is not None:
             decision, reason = rule
             decided_by = "rule"
+            step(f"Hard rule matched -> {decision}. Model not asked.")
         elif not needs_attention(facts, reading):
             decision, reason, decided_by = "wait", "Deadline not reached; no reply yet.", "rule"
+            step("Not overdue and no reply -> wait. Model not asked.")
         else:
             allowed = allowed_decisions(facts, reading)
+            step(f"Grey zone. Allowed decisions: {sorted(allowed)}.")
             decided_by = "fallback"
             if self.llm is not None:
                 try:
@@ -374,21 +412,32 @@ Allowed decisions: {serialize(sorted(allowed))}
                     decision, reason = choice.decision, choice.reason
                     message_to, message_draft = choice.message_to, choice.message_draft
                     decided_by = "agent"
+                    step(f"Decision agent chose {decision}; passed code checks.")
                 except Exception as error:
                     logger.warning("Decision agent failed, using rules: %s", error)
+                    step(f"Decision agent failed ({type(error).__name__}); using fallback rules.")
             if decided_by == "fallback":
                 decision, reason = fallback_decision(facts, reading, allowed)
+                step(f"Fallback rule chose {decision}.")
 
         replan = None
         if decision == "replan":
             replan = self.replan(request, now)
+            if "planner_error" in replan:
+                step(f"Planner failed ({replan['planner_error']}); used rule-based replan.")
+            step(
+                f"Replan ({replan['source']}): {len(replan['verified_options'])} verified option(s), "
+                f"{len(replan['rejected_options'])} rejected."
+            )
             if replan["no_verified_plan"]:
                 decision = "escalate"
                 reason += " Replan found no donor that passes the stock checks."
                 message_to = message_draft = None
+                step("No safe donor -> escalate.")
 
         if decision in {"nudge", "escalate"} and not message_draft:
             message_to, message_draft = template_message(decision, request, facts)
+            step("Message drafted from template.")
 
         # Record-keeping only. No message is sent and no stock moves.
         if decision == "nudge":
@@ -400,6 +449,7 @@ Allowed decisions: {serialize(sorted(allowed))}
             request.status = "escalated"
         elif decision == "close":
             request.status = "closed"
+        step(f"Final: {decision} by {decided_by}. Nothing sent or executed.")
 
         action = FollowUpAction(
             at=now,
@@ -412,10 +462,24 @@ Allowed decisions: {serialize(sorted(allowed))}
             facts=facts,
             flags=flags,
             replan=replan,
+            trace=trace,
             needs_human=decision in {"nudge", "replan", "escalate"} or bool(flags),
         )
         self.history[request_id].append(action)
+        self._write_audit(action, reading, allowed)
         return action
+
+    def _write_audit(self, action, reading, allowed):
+        """Append one JSON line per decision. This is the permanent record."""
+
+        if self.audit_path is None:
+            return
+        record = action.model_dump(mode="json")
+        record["reading"] = reading.model_dump(mode="json") if reading else None
+        record["allowed_decisions"] = sorted(allowed) if allowed else None
+        self.audit_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.audit_path, "a") as handle:
+            handle.write(json.dumps(record) + "\n")
 
     def tick(self, now: datetime, all_replies: list[SiteReply]):
         """Check every open request, passing replies that arrived since the last tick."""

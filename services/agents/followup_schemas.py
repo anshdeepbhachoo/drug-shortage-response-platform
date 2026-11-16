@@ -79,5 +79,6 @@ class FollowUpAction(BaseModel):
     facts: dict
     flags: list[str] = Field(default_factory=list)
     replan: dict | None = None
+    trace: list[str] = Field(default_factory=list)  # every step taken, in order
     needs_human: bool
     execution_performed: bool = False

@@ -222,3 +222,28 @@ def test_pending_approval_waits():
     action = agent.check("T-101", EVENING_1)
     assert action.decision == "wait"
     assert action.decided_by == "rule"
+
+
+# ---------------------------------------------------------
+# Logging
+# ---------------------------------------------------------
+
+def test_every_decision_is_traced_and_audited(tmp_path):
+    audit = tmp_path / "audit.jsonl"
+    agent, timeline = run(live=False, audit_path=audit)
+
+    records = [json.loads(line) for line in audit.read_text().splitlines()]
+    actions = [a for _, actions in timeline for a in actions]
+
+    assert len(records) == len(actions)
+    for record in records:
+        assert record["trace"], "every decision needs a step trace"
+        assert record["trace"][-1].startswith("Final:")
+        assert record["execution_performed"] is False
+
+    hostile = next(r for r in records if r["request_id"] == "T-104" and r["decision"] == "escalate")
+    assert any("FLAGGED" in line for line in hostile["trace"])
+
+    replan = next(r for r in records if r["decision"] == "replan")
+    assert replan["allowed_decisions"]
+    assert replan["reading"]["kind"] == "partial_confirmation"
