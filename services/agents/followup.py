@@ -18,7 +18,7 @@ reply readings and the deterministic replanner, so the demo works offline.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -34,6 +34,7 @@ from services.agents.followup_rules import (
     fallback_decision,
     hard_rule,
     needs_attention,
+    recipient_for,
     replan_inputs,
     template_message,
 )
@@ -98,18 +99,20 @@ RULES:
 - Python has already computed every number. Use them as given; do not
   recalculate cover or lateness.
 - nudge: a reminder to the sending site. Draft a short, polite message.
+  This is the normal first step for a late transfer with no reply.
 - replan: the sending site will not deliver the rest; the planner will look
   for another donor. No message needed.
 - escalate: a human manager must decide. Draft a short factual summary.
+  Python only offers this when cover is getting short, reminders have run
+  out, or the site refused or asked a question. Even then, prefer nudge or
+  replan if they can still fix the problem in time.
 - wait: nothing to do yet.
-- Prefer escalate when the receiving site's cover is short and a reminder is
-  unlikely to land in time.
+- Do not choose recipients. Our system addresses every message.
 
 OUTPUT: one JSON object, no Markdown, no commentary:
 {
   "decision": "wait | nudge | replan | escalate",
   "reason": "One or two sentences citing the numbers.",
-  "message_to": "recipient or null",
   "message_draft": "text or null"
 }
 """
@@ -406,11 +409,18 @@ Allowed decisions: {serialize(sorted(allowed))}
             allowed = allowed_decisions(facts, reading)
             step(f"Grey zone. Allowed decisions: {sorted(allowed)}.")
             decided_by = "fallback"
-            if self.llm is not None:
+            if len(allowed) == 1:
+                decision = next(iter(allowed))
+                reason = fallback_decision(facts, reading, allowed)[1]
+                decided_by = "rule"
+                step(f"Only one allowed choice -> {decision}. Model not asked.")
+            elif self.llm is not None:
                 try:
                     choice = self.decide(request, facts, reading, allowed)
                     decision, reason = choice.decision, choice.reason
-                    message_to, message_draft = choice.message_to, choice.message_draft
+                    message_draft = choice.message_draft
+                    if choice.message_to and choice.message_to != recipient_for(decision, request):
+                        step(f"Ignored model's recipient '{choice.message_to}'; code sets recipients.")
                     decided_by = "agent"
                     step(f"Decision agent chose {decision}; passed code checks.")
                 except Exception as error:
@@ -436,8 +446,9 @@ Allowed decisions: {serialize(sorted(allowed))}
                 step("No safe donor -> escalate.")
 
         if decision in {"nudge", "escalate"} and not message_draft:
-            message_to, message_draft = template_message(decision, request, facts)
+            message_draft = template_message(decision, request, facts)[1]
             step("Message drafted from template.")
+        message_to = recipient_for(decision, request) if message_draft else None
 
         # Record-keeping only. No message is sent and no stock moves.
         if decision == "nudge":
@@ -475,6 +486,9 @@ Allowed decisions: {serialize(sorted(allowed))}
         if self.audit_path is None:
             return
         record = action.model_dump(mode="json")
+        # "at" is the agent's clock (simulated in the demo, real in production).
+        # "logged_at" is always the real wall-clock time the record was written.
+        record["logged_at"] = datetime.now(timezone.utc).isoformat()
         record["reading"] = reading.model_dump(mode="json") if reading else None
         record["allowed_decisions"] = sorted(allowed) if allowed else None
         self.audit_path.parent.mkdir(parents=True, exist_ok=True)

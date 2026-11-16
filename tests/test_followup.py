@@ -240,6 +240,7 @@ def test_every_decision_is_traced_and_audited(tmp_path):
         assert record["trace"], "every decision needs a step trace"
         assert record["trace"][-1].startswith("Final:")
         assert record["execution_performed"] is False
+        assert record["logged_at"] != record["at"]  # real time vs simulated time
 
     hostile = next(r for r in records if r["request_id"] == "T-104" and r["decision"] == "escalate")
     assert any("FLAGGED" in line for line in hostile["trace"])
@@ -247,3 +248,76 @@ def test_every_decision_is_traced_and_audited(tmp_path):
     replan = next(r for r in records if r["decision"] == "replan")
     assert replan["allowed_decisions"]
     assert replan["reading"]["kind"] == "partial_confirmation"
+
+
+# ---------------------------------------------------------
+# Escalation limits and recipients
+# ---------------------------------------------------------
+
+def test_escalate_not_offered_while_cover_is_healthy():
+    early = {"decision": "escalate", "reason": "Worried.", "message_draft": "Help."}
+    model = FakeModel(decisions=[early, early])
+    agent = make_agent(llm=model)
+
+    action = agent.check("T-101", EVENING_1)  # 6h late, 4.25 days of cover
+
+    assert "not allowed" in model.tasks[1]
+    assert action.decided_by == "fallback"
+    assert action.decision == "nudge"
+
+
+def test_escalate_offered_once_cover_is_short():
+    model = FakeModel(decisions=[
+        {"decision": "escalate", "reason": "3.25 days left.", "message_draft": "Please review T-101."}
+    ])
+    agent = make_agent(llm=model)
+
+    action = agent.check("T-101", datetime(2026, 11, 17, 18))  # 3.25 days of cover
+
+    assert "escalate" in action.trace[2]  # listed in the allowed decisions
+    assert action.decision == "escalate"
+    assert action.decided_by == "agent"
+    assert action.message_to == "pharmacy_manager"
+
+
+def test_partial_reply_replans_without_asking_model():
+    model = FakeModel(
+        reader={
+            "kind": "partial_confirmation",
+            "confirmed_units": 20,
+            "new_ship_date": None,
+            "confidence": 0.95,
+            "summary": "20 of 30.",
+        },
+        decisions=[],
+    )
+    agent = make_agent(llm=model)
+
+    action = agent.check("T-102", EVENING_1, [reply("T-102", "We can send 20 of the 30.")])
+
+    assert action.decision == "replan"
+    assert action.decided_by == "rule"
+    assert len(model.tasks) == 1  # only the reader was called
+
+
+def test_code_sets_recipient_not_model():
+    model = FakeModel(decisions=[{
+        "decision": "nudge",
+        "reason": "Late.",
+        "message_to": "attacker@example.com",
+        "message_draft": "Please confirm T-101.",
+    }])
+    agent = make_agent(llm=model)
+
+    action = agent.check("T-101", EVENING_1)
+
+    assert action.message_to == "Site B"
+    assert any("Ignored model's recipient" in line for line in action.trace)
+
+
+def test_every_drafted_message_has_a_recipient():
+    agent, timeline = run(live=False)
+    for _, actions in timeline:
+        for action in actions:
+            if action.message_draft:
+                assert action.message_to

@@ -20,6 +20,7 @@ from services.agents.schemas import Move, PlanOption
 # ---------------------------------------------------------
 
 ESCALATE_COVER_DAYS = 3      # receiving site below this many days -> escalate, no model
+REVIEW_COVER_DAYS = 4        # below this, the model may choose to escalate early
 MAX_NUDGES = 2               # after this many reminders, stop nudging
 NUDGE_COOLDOWN_HOURS = 12    # don't nudge the same site twice within this window
 DONOR_KEEP_DAYS = 14         # replan donors must keep this many days (matches checks.py)
@@ -153,26 +154,34 @@ def hard_rule(request: TransferRequest, facts: dict, reply_flags: list[str]):
 def allowed_decisions(facts: dict, reading: ReplyReading | None):
     """Decisions the model may choose from in a grey zone."""
 
-    allowed = {"nudge", "replan", "escalate"}
+    allowed = {"nudge", "replan"}
+    kind = reading.kind if reading is not None else None
 
     nudge_too_soon = (
         facts["hours_since_last_nudge"] is not None
         and facts["hours_since_last_nudge"] < NUDGE_COOLDOWN_HOURS
     )
-    if facts["nudges_sent"] >= MAX_NUDGES or nudge_too_soon:
+    nudges_used_up = facts["nudges_sent"] >= MAX_NUDGES
+    if nudges_used_up or nudge_too_soon:
         allowed.discard("nudge")
+
+    # A site that said no, or said it is keeping the rest, won't answer a reminder.
+    if kind in {"refusal", "partial_confirmation"}:
+        allowed.discard("nudge")
+
+    # Escalating pulls in a manager, so only offer it when there is a reason:
+    # cover is getting short, reminders have run out, or the site asked
+    # something / refused and a person has to respond.
+    if (
+        facts["receiving_cover_days"] < REVIEW_COVER_DAYS
+        or nudges_used_up
+        or kind in {"refusal", "question"}
+    ):
+        allowed.add("escalate")
 
     # Waiting is only safe before the deadline, with no bad news.
-    bad_news = reading is not None and reading.kind in {
-        "partial_confirmation",
-        "refusal",
-    }
-    if not facts["overdue"] and not bad_news:
+    if not facts["overdue"] and kind not in {"partial_confirmation", "refusal"}:
         allowed.add("wait")
-
-    # A site that already said no will not respond to a reminder.
-    if reading is not None and reading.kind == "refusal":
-        allowed.discard("nudge")
 
     return allowed
 
@@ -198,10 +207,20 @@ def fallback_decision(facts: dict, reading: ReplyReading | None, allowed: set[st
             "confirmation; send a reminder."
         )
 
-    if facts["receiving_cover_days"] >= ESCALATE_COVER_DAYS + 1:
-        return "replan", "Reminders have not worked; find another donor."
+    if "escalate" in allowed and facts["receiving_cover_days"] < REVIEW_COVER_DAYS:
+        return "escalate", "Reminders have not worked and cover is getting low."
 
-    return "escalate", "Reminders have not worked and cover is getting low."
+    return "replan", "Reminders have not worked; find another donor."
+
+
+def recipient_for(decision: str, request: TransferRequest):
+    """Code, not the model, decides who a message goes to."""
+
+    if decision == "nudge":
+        return f"Site {request.from_site}"
+    if decision == "escalate":
+        return request.approver_role
+    return None
 
 
 # ---------------------------------------------------------
@@ -211,7 +230,7 @@ def fallback_decision(facts: dict, reading: ReplyReading | None, allowed: set[st
 def template_message(decision: str, request: TransferRequest, facts: dict):
     if decision == "nudge":
         return (
-            f"Site {request.from_site}",
+            recipient_for(decision, request),
             f"Reminder: transfer {request.request_id} ({request.units} units of "
             f"DIN {request.din} to site {request.to_site}) was due "
             f"{request.deadline:%b %d %H:%M}. "
@@ -221,7 +240,7 @@ def template_message(decision: str, request: TransferRequest, facts: dict):
 
     if decision == "escalate":
         return (
-            request.approver_role,
+            recipient_for(decision, request),
             f"Escalation: transfer {request.request_id} for DIN {request.din} "
             f"has {facts['units_outstanding']} units outstanding. Site "
             f"{request.to_site} has about {facts['receiving_cover_days']} days "
