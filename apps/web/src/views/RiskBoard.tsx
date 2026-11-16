@@ -3,7 +3,7 @@ import { DRUGS, SITES, dayLabel, drugById, siteName } from "../data/mock";
 import { AMBER_BELOW, RED_BELOW, lineCoverage, projection, tierFor, withApprovedPlans } from "../lib/risk";
 import { useStore } from "../lib/store";
 import type { StockLine, Tier } from "../lib/types";
-import { Card, ChartGuide, Change, Explainers, PageHead, ProjectionChart, Sources, Status, TIER_TONE, TierStatus, formatDays } from "../components/ui";
+import { Card, ChartGuide, Change, PageHead, ProjectionChart, Sources, Status, TIER_TONE, TierStatus, formatDays } from "../components/ui";
 
 const AXIS_MAX = 60;
 const pct = (days: number) => `${(Math.min(days, AXIS_MAX) / AXIS_MAX) * 100}%`;
@@ -208,18 +208,6 @@ export function RiskBoard({ go }: { go: (view: string) => void }) {
         </div>
       </div>
 
-      <section>
-        <div className="section-head">
-          <h2>How to read this page</h2>
-        </div>
-        <Explainers
-          items={[
-            { title: "Days of stock", text: "Stock on hand divided by how much is used each day. Deliveries count on the day they are due to arrive." },
-            { title: "Safety floor", text: "Every hospital keeps at least 14 days. A plan that would push any hospital under that line is rejected in code." },
-            { title: "Traceable numbers", text: "Click any bar to see the stock count, usage and orders behind it, and the record each one came from." },
-          ]}
-        />
-      </section>
     </>
   );
 }
@@ -232,7 +220,7 @@ function Stat({ value, label, tone, onClick }: { value: number; label: string; t
         {value}
         {tone !== "neutral" && value > 0 && <Status tone={tone}>{""}</Status>}
       </span>
-      {onClick && <span className="small muted">Open →</span>}
+      <span className="small muted">{onClick ? "Open →" : "\u00a0"}</span>
     </button>
   );
 }
@@ -326,7 +314,7 @@ function StripGuide({ cells }: { cells: { line: StockLine; days: number; tier: s
   return (
     <ChartGuide
       items={[
-        { mark: "bar-good", text: <>Each <b>row</b> is one drug; each <b>bar</b> is one hospital. A longer bar means <b>more days</b> before that hospital runs out.</> },
+        { mark: "bar-good", text: <>Each <b>row</b> is one drug; each <b>bar</b> is one hospital. A longer bar means <b>more days</b> before that hospital runs out (stock on hand ÷ daily use, counting deliveries on their due day).</> },
         { mark: "bar-crit", text: <>Bar colour says how urgent: <b>red</b> under {RED_BELOW} days, <b>amber</b> under {AMBER_BELOW} days, <b>green</b> is fine.</> },
         { mark: "floor", text: <>The <b>dashed red line</b> is the {AMBER_BELOW}-day safety floor every hospital must stay above.</> },
         { mark: "after", text: <>A <b>thin black mark</b> shows where the bar will be once an approved plan is delivered.</> },

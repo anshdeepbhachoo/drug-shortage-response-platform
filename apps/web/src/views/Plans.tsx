@@ -43,7 +43,11 @@ export function Plans() {
       <section>
         <div className="section-head">
           <h2>Options in detail</h2>
-          <span className="meta">{current.length} options</span>
+          <div className="legend small">
+            <span><i style={{ background: "var(--good)" }} />Days of stock after the plan</span>
+            <span><i className="line" style={{ background: "none", borderLeft: "2px dashed var(--crit)", width: 2, height: 12, borderRadius: 0 }} />14-day safety floor</span>
+            <span><i style={{ background: "var(--ink)", width: 3 }} />Days needed until the late order arrives</span>
+          </div>
         </div>
         <div className="stack" style={{ gap: 16 }}>
           {current.map((p, i) => (
@@ -85,7 +89,7 @@ function Compare({ plans }: { plans: Plan[] }) {
           { mark: "cost", text: <>A <b>longer blue bar</b> means the option <b>costs more</b>. Bars are scaled to the most expensive option.</> },
           { mark: "ok", text: <>The last column says whether the option passes the safety checks and where it is in the approval process.</> },
         ]}
-        example={<>The planner ranks the cheapest safe option first and marks it <b>Best</b>. If things change later (for example, a hospital starts using more), an option can stop being safe, and the status column says so.</>}
+        example={<>The planner ranks the cheapest safe option first (#1). If things change later (for example, a hospital starts using more), an option can stop being safe, and the status column says so.</>}
       />
       <table className="table" style={{ margin: "0 -20px", width: "calc(100% + 40px)" }}>
         <thead>
@@ -97,8 +101,8 @@ function Compare({ plans }: { plans: Plan[] }) {
           </tr>
         </thead>
         <tbody>
-          {plans.map((p, i) => (
-            <CompareRow key={p.id} plan={p} max={max} first={i === 0} />
+          {plans.map((p) => (
+            <CompareRow key={p.id} plan={p} max={max} />
           ))}
         </tbody>
       </table>
@@ -106,7 +110,7 @@ function Compare({ plans }: { plans: Plan[] }) {
   );
 }
 
-function CompareRow({ plan, max, first }: { plan: Plan; max: number; first: boolean }) {
+function CompareRow({ plan, max }: { plan: Plan; max: number }) {
   const feasible = usePlanFeasible(plan);
   const cost = costOf(plan);
   return (
@@ -114,12 +118,6 @@ function CompareRow({ plan, max, first }: { plan: Plan; max: number; first: bool
       <td>
         <span className="meta">#{plan.rank} </span>
         <b>{plan.title}</b>
-        {first && feasible && (
-          <>
-            {" "}
-            <span className="badge-accent">Best</span>
-          </>
-        )}
       </td>
       <td>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }} title={plan.cost}>

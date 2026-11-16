@@ -85,6 +85,22 @@ function useTheme() {
 export function App() {
   const { state, dispatch } = useStore();
   const [theme, toggleTheme] = useTheme();
+  const [storyOpen, setStoryOpen] = useState(() => {
+    try {
+      return localStorage.getItem("story-open") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggleStory = () =>
+    setStoryOpen((o) => {
+      try {
+        localStorage.setItem("story-open", o ? "0" : "1");
+      } catch {
+        /* storage unavailable: toggle still works for this visit */
+      }
+      return !o;
+    });
   const [view, setView] = useState<ViewId>(() => {
     const requested = new URLSearchParams(window.location.search).get("view");
     return NAV.some((n) => n.id === requested) ? (requested as ViewId) : HOME[state.role];
@@ -170,10 +186,17 @@ export function App() {
                 <span className="meta">{timeLabel(state.clockMin)} · simulated clock</span>
               </div>
               <h2>{story.headline}</h2>
-              <p>{story.why}</p>
-              <p className="story-look">
-                <b>Look at:</b> {story.look}
-              </p>
+              {storyOpen && (
+                <>
+                  <p>{story.why}</p>
+                  <p className="story-look">
+                    <b>Look at:</b> {story.look}
+                  </p>
+                </>
+              )}
+              <button className="link small story-toggle" onClick={toggleStory} aria-expanded={storyOpen}>
+                {storyOpen ? "Hide details" : "Why this matters"}
+              </button>
             </div>
             <div className="story-actions">
               <button className="btn" onClick={reset}>

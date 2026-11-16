@@ -3,7 +3,7 @@ import { SITES, dayLabel, drugById, siteName } from "../data/mock";
 import { AMBER_BELOW, applyPlan, coverageDays, evaluatePlan, tierFor } from "../lib/risk";
 import { useStore } from "../lib/store";
 import type { Plan, PlanStatus } from "../lib/types";
-import { ChartGuide, Sources, Status, TIER_TONE, formatDays, type Tone } from "./ui";
+import { Sources, Status, TIER_TONE, formatDays, type Tone } from "./ui";
 
 export const PLAN_STATUS: Record<PlanStatus, { tone: Tone; text: string }> = {
   proposed: { tone: "neutral", text: "Option" },
@@ -113,14 +113,6 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
             <div className="label" style={{ marginBottom: 8 }}>
               Days of stock after this plan
             </div>
-            <ChartGuide
-              open={false}
-              items={[
-                { mark: "bar-good", text: <>One bar per hospital: <b>days of stock it would have</b> if this plan goes ahead.</> },
-                { mark: "floor", text: <>The <b>dashed red line</b> is the {AMBER_BELOW}-day safety floor. A plan that pushes a bar left of it is rejected.</> },
-                { mark: "after", text: <>On {siteName(event.siteId ?? "")}, the <b>black mark</b> is how long its stock must last until the late order arrives. The bar should reach past it.</> },
-              ]}
-            />
             <div className="bars" role="img" aria-label="Days of stock at each hospital after this plan">
               {SITES.map((s) => {
                 const st = after.get(s.id);

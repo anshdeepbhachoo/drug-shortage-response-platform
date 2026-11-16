@@ -241,7 +241,7 @@ export function ProjectionChart({
   height?: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
-  const width = 560;
+  const width = 420;
   const pad = { l: 40, r: 14, t: 18, b: 26 };
   const days = Math.max(...series.map((s) => s.points.length)) - 1;
   const rawMax = Math.max(1, floor ?? 0, ...series.flatMap((s) => s.points));
@@ -364,7 +364,7 @@ export function ProjectionChart({
 ---------------------------------------------------------------- */
 export type KeyMark = "bar-good" | "bar-warn" | "bar-crit" | "zone" | "floor" | "after" | "line-1" | "line-2" | "dot" | "drop" | "tick" | "cost" | "ok" | "bad";
 
-export function ChartGuide({ items, example, open = true }: { items: { mark: KeyMark; text: ReactNode }[]; example?: ReactNode; open?: boolean }) {
+export function ChartGuide({ items, example, open = false }: { items: { mark: KeyMark; text: ReactNode }[]; example?: ReactNode; open?: boolean }) {
   return (
     <details className="guide" open={open}>
       <summary>How to read this chart</summary>
