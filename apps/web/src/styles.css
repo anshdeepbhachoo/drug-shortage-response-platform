@@ -495,3 +495,20 @@ details.why p { color: var(--ink-2); line-height: 1.65; }
   .welcome-how, .welcome-grid { grid-template-columns: 1fr; }
   .welcome-actions .btn { flex: 1; }
 }
+
+/* ---------- Chart refinements ---------- */
+.chart:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+.chart { touch-action: pan-y; }
+.chart .danger-zone { fill: var(--crit-wash); }
+.chart .gap { stroke: var(--crit); stroke-width: 5; stroke-linecap: round; }
+.chart .annot-crit { fill: var(--crit-text); font-weight: 600; }
+.tooltip .tip-row { display: flex; align-items: center; gap: 6px; }
+.tooltip .tip-row i { width: 8px; height: 8px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1.5px var(--invert-ink); }
+.tooltip .tip-flag { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--crit); color: #fff; }
+.bar-gain { position: absolute; top: 1px; bottom: 1px; border-radius: 0 4px 4px 0; background: repeating-linear-gradient(135deg, var(--series-1) 0 3px, transparent 3px 6px); opacity: 0.7; }
+.gain-swatch, .gk-gain { background: repeating-linear-gradient(135deg, var(--series-1) 0 3px, transparent 3px 6px) !important; border-radius: 0 4px 4px 0; }
+.gk-gap { height: 5px; border-radius: 3px; background: var(--crit); }
+.gk-danger { height: 14px; background: var(--crit-wash); border-top: 2px dashed var(--crit); border-radius: 0 0 2px 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .bar-fill, .bar-gain { transition: width 0.35s ease, left 0.35s ease; }
+}

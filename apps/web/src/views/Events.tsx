@@ -92,7 +92,7 @@ export function Events() {
                   open={false}
                   items={[
                     { mark: email.extraction.confidence >= 0.85 ? "bar-good" : "bar-crit", text: <>The filled bar is <b>how sure the AI is</b> that it read the email correctly (0 to 100%).</> },
-                    { mark: "tick", text: <>The black mark is the <b>85% line</b>. Above it, the reading is used automatically. Below it, or if anything looks odd, a person must check it first.</> },
+                    { mark: "tick", text: <>The dark mark is the <b>85% line</b>. Above it, the reading is used automatically. Below it, or if anything looks odd, a person must check it first.</> },
                   ]}
                   example={<>This email scored <b>{Math.round(email.extraction.confidence * 100)}%</b>, so it was {email.extraction.flags.length > 0 ? "held back for a person to review" : "accepted"}.</>}
                 />

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useId, useState, type ReactNode } from "react";
 import { SOURCES, dayLabel } from "../data/mock";
 import type { Tier } from "../lib/types";
 
@@ -241,6 +241,7 @@ export function ProjectionChart({
   height?: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const gradId = useId();
   const width = 420;
   const pad = { l: 40, r: 14, t: 18, b: 26 };
   const days = Math.max(...series.map((s) => s.points.length)) - 1;
@@ -252,13 +253,40 @@ export function ProjectionChart({
   const ticks = Array.from({ length: max / step + 1 }, (_, i) => i * step);
 
   const runOut = series.map((s) => s.points.findIndex((v, i) => i > 0 && v <= 0));
+  // Days with no stock at all, from the run-out day until the next delivery (or the chart's end).
+  const gaps = series.map((s, i) => {
+    if (runOut[i] <= 0) return null;
+    const back = s.points.findIndex((v, d) => d > runOut[i] && v > 0);
+    return { from: runOut[i], to: back === -1 ? days : back, open: back === -1 };
+  });
+  const clampX = (v: number, half = 70) => Math.min(Math.max(v, pad.l + half), width - pad.r - half);
 
-  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const px = ((e.clientX - rect.left) / rect.width) * width;
+  const dayAt = (clientX: number, el: SVGSVGElement) => {
+    const rect = el.getBoundingClientRect();
+    const px = ((clientX - rect.left) / rect.width) * width;
     const d = Math.round(((px - pad.l) / (width - pad.l - pad.r)) * days);
-    setHover(d >= 0 && d <= days ? d : null);
+    return d >= 0 && d <= days ? d : null;
   };
+  const onPointer = (e: React.PointerEvent<SVGSVGElement>) => setHover(dayAt(e.clientX, e.currentTarget));
+  const onKey = (e: React.KeyboardEvent<SVGSVGElement>) => {
+    const moves: Record<string, (d: number) => number> = {
+      ArrowRight: (d) => Math.min(d + 1, days),
+      ArrowLeft: (d) => Math.max(d - 1, 0),
+      Home: () => 0,
+      End: () => days,
+    };
+    if (!moves[e.key]) return;
+    e.preventDefault();
+    setHover((h) => moves[e.key](h ?? 0));
+  };
+
+  const first = series[0];
+  const summary =
+    runOut[0] > 0
+      ? `Stock of ${first.points[0]} ${unit} runs out ${dayLabel(runOut[0])}${gaps[0] && !gaps[0].open ? ` and is empty for ${gaps[0].to - gaps[0].from} days until the next delivery` : ""}.`
+      : `Stock of ${first.points[0]} ${unit} lasts the full ${days} days.`;
+  const tipEdge = hover === null ? 0 : hover / days;
+  const tipShift = tipEdge < 0.15 ? "-12%" : tipEdge > 0.85 ? "-88%" : "-50%";
 
   return (
     <div className="chart-wrap">
@@ -278,7 +306,28 @@ export function ProjectionChart({
           )}
         </div>
       )}
-      <svg viewBox={`0 0 ${width} ${height}`} className="chart" role="img" aria-label="Projected stock over the next 30 days" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="chart"
+        role="img"
+        tabIndex={0}
+        aria-label={`Projected stock over the next ${days} days. ${summary} Use the arrow keys to read each day.`}
+        onPointerMove={onPointer}
+        onPointerDown={onPointer}
+        onPointerLeave={(e) => e.pointerType === "mouse" && setHover(null)}
+        onKeyDown={onKey}
+        onFocus={() => setHover((h) => h ?? 0)}
+        onBlur={() => setHover(null)}
+      >
+        <defs>
+          <linearGradient id={gradId} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={first.color} stopOpacity={0.22} />
+            <stop offset="100%" stopColor={first.color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        {floor !== undefined && floor > 0 && (
+          <rect x={pad.l} y={y(floor)} width={width - pad.l - pad.r} height={y(0) - y(floor)} className="danger-zone" />
+        )}
         {ticks.map((t) => (
           <g key={t}>
             <line x1={pad.l} x2={width - pad.r} y1={y(t)} y2={y(t)} className={t === 0 ? "baseline" : "grid"} />
@@ -310,6 +359,12 @@ export function ProjectionChart({
             </text>
           </g>
         ))}
+        {series.length === 1 && (
+          <polygon fill={`url(#${gradId})`} points={`${x(0)},${y(0)} ${first.points.map((v, i) => `${x(i)},${y(v)}`).join(" ")} ${x(days)},${y(0)}`} />
+        )}
+        {gaps.map((g, i) =>
+          g ? <line key={`gap-${series[i].label}`} x1={x(g.from)} x2={x(g.to)} y1={y(0)} y2={y(0)} className="gap" /> : null,
+        )}
         {series.map((s) => (
           <polyline
             key={s.label}
@@ -326,8 +381,9 @@ export function ProjectionChart({
           runOut[i] > 0 ? (
             <g key={`ro-${s.label}`}>
               <circle cx={x(runOut[i])} cy={y(0)} r={4.5} fill={s.color} stroke="var(--surface)" strokeWidth={2} />
-              <text x={x(runOut[i])} y={y(0) - 10} textAnchor="middle" className="annot-strong">
+              <text x={clampX(x(runOut[i]))} y={y(0) - 10 - i * 15} textAnchor="middle" className="annot-strong">
                 Runs out {dayLabel(runOut[i])}
+                {gaps[i] && !gaps[i]!.open && <tspan className="annot-crit"> · {gaps[i]!.to - gaps[i]!.from} days empty</tspan>}
               </text>
             </g>
           ) : null,
@@ -343,14 +399,27 @@ export function ProjectionChart({
         <rect x={pad.l} y={pad.t} width={width - pad.l - pad.r} height={height - pad.t - pad.b} fill="transparent" />
       </svg>
       {hover !== null && (
-        <div className="tooltip" style={{ left: `${(x(hover) / width) * 100}%`, top: `${(y(Math.max(...series.map((s) => s.points[hover] ?? 0))) / height) * 100}%` }}>
+        <div
+          className="tooltip"
+          style={{
+            left: `${(x(hover) / width) * 100}%`,
+            top: `${(y(Math.max(...series.map((s) => s.points[hover] ?? 0))) / height) * 100}%`,
+            transform: `translate(${tipShift}, -110%)`,
+          }}
+        >
           <b>{hover === 0 ? "Today" : dayLabel(hover)}</b>
-          {series.map((s) => (
-            <div key={s.label}>
-              {series.length > 1 ? `${s.label}: ` : ""}
-              {Math.round(s.points[hover] ?? 0)} {unit}
-            </div>
-          ))}
+          {series.map((s) => {
+            const v = Math.round(s.points[hover] ?? 0);
+            const note = v <= 0 ? "out of stock" : floor !== undefined && v < floor ? "below floor" : null;
+            return (
+              <div key={s.label} className="tip-row">
+                {series.length > 1 && <i style={{ background: s.color }} aria-hidden />}
+                {series.length > 1 ? `${s.label}: ` : ""}
+                {v} {unit}
+                {note && <span className="tip-flag">{note}</span>}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -362,7 +431,7 @@ export function ProjectionChart({
    Each row pairs a small picture of the mark with what it means,
    and an optional example reads the chart out loud using live data.
 ---------------------------------------------------------------- */
-export type KeyMark = "bar-good" | "bar-warn" | "bar-crit" | "zone" | "floor" | "after" | "line-1" | "line-2" | "dot" | "drop" | "tick" | "cost" | "ok" | "bad";
+export type KeyMark = "bar-good" | "bar-warn" | "bar-crit" | "zone" | "floor" | "after" | "gain" | "line-1" | "line-2" | "dot" | "drop" | "gap" | "danger" | "tick" | "cost" | "ok" | "bad";
 
 export function ChartGuide({ items, example, open = false }: { items: { mark: KeyMark; text: ReactNode }[]; example?: ReactNode; open?: boolean }) {
   return (

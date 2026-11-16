@@ -192,7 +192,15 @@ export function App() {
               </button>
             ))}
           </nav>
-          <button className="tour-btn" onClick={() => setTouring(true)} aria-label="Show me around" title="Show me around">
+          <button
+            className="tour-btn"
+            onClick={() => {
+              setTouring(false);
+              setWelcoming(true);
+            }}
+            aria-label="Show me around"
+            title="Show me around"
+          >
             <span className="q" aria-hidden>
               ?
             </span>

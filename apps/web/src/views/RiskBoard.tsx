@@ -134,8 +134,8 @@ export function RiskBoard({ go }: { go: (view: string) => void }) {
                 14-day safety floor
               </span>
               <span>
-                <i style={{ background: "var(--ink)", width: 3 }} />
-                After approved plan
+                <i className="gain-swatch" />
+                Added by approved plan
               </span>
             </div>
           }
@@ -184,6 +184,9 @@ export function RiskBoard({ go }: { go: (view: string) => void }) {
                             <div className="bar-track">
                               <span className="bar-zone red" style={{ left: 0, width: pct(RED_BELOW) }} />
                               <span className="bar-zone amber" style={{ left: pct(RED_BELOW), width: `calc(${pct(AMBER_BELOW)} - ${pct(RED_BELOW)})` }} />
+                              {c.changed && c.after > c.days && (
+                                <span className="bar-gain" style={{ left: pct(c.days), width: `calc(${pct(c.after)} - ${pct(c.days)})` }} />
+                              )}
                               <span className={`bar-fill ${TIER_TONE[c.tier]}`} style={{ width: pct(c.days) }} />
                               <span className="bar-floor" style={{ left: pct(AMBER_BELOW) }} />
                               {c.changed && <span className="bar-after" style={{ left: pct(c.after) }} />}
@@ -262,8 +265,10 @@ function CellDetail({ line, projected }: { line: StockLine; projected: StockLine
           { mark: "line-2", text: <>The line is <b>how many {drug.unit} are left</b> on each day, for the next 30 days. It slopes down as stock is used.</> },
           ...(marks.length ? [{ mark: "drop" as const, text: <>Where it <b>jumps up</b>, a delivery arrives (dotted line at the top says how many).</> }] : []),
           { mark: "floor", text: <>The <b>dashed red line</b> is the safety floor: {line.safetyDays} days of stock ({floor} {drug.unit}). Dropping below it is the warning sign.</> },
+          { mark: "danger", text: <>The <b>pink band</b> under the floor is the danger zone. Any part of the line inside it means less than {line.safetyDays} days of stock.</> },
           { mark: "dot", text: <>The dot on the bottom marks the day the hospital would <b>run out completely</b>.</> },
-          ...(changed ? [{ mark: "line-1" as const, text: <>The <b>blue line</b> shows the same thing if the approved plan goes ahead. Compare the two lines to see what the plan buys you.</> }] : []),
+          { mark: "gap", text: <>A <b>thick red stretch</b> along the bottom is the days with <b>no stock at all</b>, until the next delivery.</> },
+          ...(changed ? [{ mark: "line-1" as const, text: <>The <b>green line</b> shows the same thing if the approved plan goes ahead. Compare the two lines to see what the plan buys you.</> }] : []),
         ]}
         example={
           <>
@@ -275,7 +280,7 @@ function CellDetail({ line, projected }: { line: StockLine; projected: StockLine
             ) : (
               "."
             )}{" "}
-            Move your mouse along the chart to see the amount left on any day.
+            Move your mouse or finger along the chart, or focus it and use the arrow keys, to read any day.
           </>
         }
       />
@@ -317,7 +322,7 @@ function StripGuide({ cells }: { cells: { line: StockLine; days: number; tier: s
         { mark: "bar-good", text: <>Each <b>row</b> is one drug; each <b>bar</b> is one hospital. A longer bar means <b>more days</b> before that hospital runs out (stock on hand ÷ daily use, counting deliveries on their due day).</> },
         { mark: "bar-crit", text: <>Bar colour says how urgent: <b>red</b> under {RED_BELOW} days, <b>amber</b> under {AMBER_BELOW} days, <b>green</b> is fine.</> },
         { mark: "floor", text: <>The <b>dashed red line</b> is the {AMBER_BELOW}-day safety floor every hospital must stay above.</> },
-        { mark: "after", text: <>A <b>thin black mark</b> shows where the bar will be once an approved plan is delivered.</> },
+        { mark: "gain", text: <>A <b>striped green extension</b> shows the extra days an approved plan adds once it is delivered. A dark tick marks where the bar ends up.</> },
       ]}
       example={
         worst && (

@@ -86,7 +86,7 @@ function Compare({ plans }: { plans: Plan[] }) {
       <ChartGuide
         open={false}
         items={[
-          { mark: "cost", text: <>A <b>longer blue bar</b> means the option <b>costs more</b>. Bars are scaled to the most expensive option.</> },
+          { mark: "cost", text: <>A <b>longer green bar</b> means the option <b>costs more</b>. Bars are scaled to the most expensive option.</> },
           { mark: "ok", text: <>The last column says whether the option passes the safety checks and where it is in the approval process.</> },
         ]}
         example={<>The planner ranks the cheapest safe option first (#1). If things change later (for example, a hospital starts using more), an option can stop being safe, and the status column says so.</>}
