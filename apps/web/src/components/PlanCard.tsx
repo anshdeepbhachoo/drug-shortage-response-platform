@@ -1,97 +1,106 @@
 import type { ReactNode } from "react";
-import { dayLabel, drugById, siteName } from "../data/mock";
-import { evaluatePlan } from "../lib/risk";
+import { SITES, dayLabel, drugById, siteName } from "../data/mock";
+import { AMBER_BELOW, applyPlan, coverageDays, evaluatePlan, tierFor } from "../lib/risk";
 import { useStore } from "../lib/store";
 import type { Plan, PlanStatus } from "../lib/types";
-import { Badge, SourceChip } from "./ui";
+import { ChartGuide, Sources, Status, TIER_TONE, formatDays, type Tone } from "./ui";
 
-const STATUS_TONE: Record<PlanStatus, "neutral" | "info" | "good" | "bad" | "warn"> = {
-  proposed: "neutral",
-  "pending-approval": "info",
-  approved: "good",
-  rejected: "bad",
-  broken: "bad",
-  superseded: "warn",
+export const PLAN_STATUS: Record<PlanStatus, { tone: Tone; text: string }> = {
+  proposed: { tone: "neutral", text: "Option" },
+  "pending-approval": { tone: "warn", text: "Waiting for pharmacist" },
+  approved: { tone: "good", text: "Approved" },
+  rejected: { tone: "crit", text: "Rejected" },
+  broken: { tone: "crit", text: "Stopped: no longer safe" },
+  superseded: { tone: "neutral", text: "Replaced by a newer plan" },
 };
 
-export function PlanCard({ plan, actions, compact }: { plan: Plan; actions?: ReactNode; compact?: boolean }) {
+const MAX = 60;
+const pct = (d: number) => `${(Math.min(d, MAX) / MAX) * 100}%`;
+
+export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; actions?: ReactNode; compact?: boolean; recommended?: boolean }) {
   const { state } = useStore();
   const event = state.events.find((e) => e.id === plan.eventId)!;
   const drug = drugById(plan.drugId);
   const { checks, feasible } = evaluatePlan(plan, state.stock, event, siteName, dayLabel, drug.unit);
   const hard = checks.filter((c) => c.hard);
   const soft = checks.filter((c) => !c.hard);
+  const after = applyPlan(state.stock, plan, event.siteId);
+  const status = PLAN_STATUS[plan.status];
+  const faded = plan.status === "superseded" || plan.status === "rejected";
 
   return (
-    <article className={`plan ${feasible ? "" : "infeasible"} plan-${plan.status}`}>
-      <header className="plan-head">
-        <div className="rank">#{plan.rank}</div>
-        <div className="grow">
+    <article className={`plan ${recommended && feasible ? "recommended" : ""} ${faded ? "faded" : ""}`}>
+      <header className="plan-top">
+        <span className="rank">#{plan.rank}</span>
+        <div>
           <h3>{plan.title}</h3>
-          <div className="muted small">
-            {plan.id} · solver run <SourceChip id={plan.solverRun} /> · score {plan.score.toFixed(2)}
+          <div className="row" style={{ marginTop: 4 }}>
+            {recommended && feasible && <span className="badge-accent">Recommended</span>}
+            {!feasible && <Status tone="crit">Breaks a safety rule</Status>}
+            <span className="meta">
+              Cost {plan.cost.replace("≈ ", "≈")} · {plan.leadTime}
+            </span>
           </div>
         </div>
-        <div className="plan-badges">
-          {!feasible && <Badge tone="bad">violates hard constraint</Badge>}
-          <Badge tone={STATUS_TONE[plan.status]}>{plan.status.replace("-", " ")}</Badge>
-        </div>
+        <Status tone={status.tone}>{status.text}</Status>
       </header>
 
-      <div className="plan-moves">
-        {plan.transfers.map((t, i) => (
-          <div key={i} className="move">
-            <span className="site-tag">{siteName(t.from)}</span>
-            <span className="arrow">
-              {t.qty} {drug.unit} →
-            </span>
-            <span className="site-tag">{siteName(t.to)}</span>
-          </div>
-        ))}
-        {plan.orders.map((o, i) => (
-          <div key={`o${i}`} className="move">
-            <span className="site-tag supplier">{o.supplier}</span>
-            <span className="arrow">
-              {o.qty} {drug.unit} by {dayLabel(o.etaDay)} →
-            </span>
-            <span className="site-tag">{siteName(event.siteId ?? "")}</span>
-          </div>
-        ))}
-        <div className="plan-meta">
-          <span>
-            <b>Cost</b> {plan.cost}
-          </span>
-          <span>
-            <b>Timing</b> {plan.leadTime}
-          </span>
-        </div>
-      </div>
-
       {!compact && (
-        <div className="plan-body">
+        <div className="plan-cols">
           <div>
-            <h4>Hard constraints (checked in code)</h4>
+            <div className="label" style={{ marginBottom: 8 }}>
+              What moves
+            </div>
+            <div className="flow">
+              {plan.transfers.map((t, i) => (
+                <div key={i} className="flow-row">
+                  <span className="from">{siteName(t.from)}</span>
+                  <span className="qty">
+                    {t.qty} {drug.unit}
+                  </span>
+                  <span className="to">{siteName(t.to)}</span>
+                </div>
+              ))}
+              {plan.orders.map((o, i) => (
+                <div key={`o${i}`} className="flow-row">
+                  <span className="from supplier">{o.supplier}</span>
+                  <span className="qty">
+                    {o.qty} by {dayLabel(o.etaDay)}
+                  </span>
+                  <span className="to">{siteName(event.siteId ?? "")}</span>
+                </div>
+              ))}
+              {plan.conservationUsage !== undefined && (
+                <p className="small ink-2">Lakeshore also cuts daily use to {plan.conservationUsage} {drug.unit}.</p>
+              )}
+            </div>
+
+            <div className="label" style={{ margin: "18px 0 8px" }}>
+              Safety checks (done in code, not by AI)
+            </div>
             <ul className="checks">
               {hard.map((c) => (
-                <li key={c.label} className={c.ok ? "ok" : "fail"}>
-                  <span className="mark">{c.ok ? "✓" : "✕"}</span>
+                <li key={c.label}>
+                  <Status tone={c.ok ? "good" : "crit"}>{""}</Status>
                   <div>
                     {c.label}
-                    <div className="muted small">{c.detail}</div>
+                    <div className="sub">{c.detail}</div>
                   </div>
                 </li>
               ))}
             </ul>
             {soft.length > 0 && (
               <>
-                <h4>Tradeoffs</h4>
+                <div className="label" style={{ margin: "14px 0 8px" }}>
+                  Trade-offs
+                </div>
                 <ul className="checks">
                   {soft.map((c) => (
-                    <li key={c.label} className="warn">
-                      <span className="mark">!</span>
+                    <li key={c.label}>
+                      <Status tone="warn">{""}</Status>
                       <div>
                         {c.label}
-                        <div className="muted small">{c.detail}</div>
+                        <div className="sub">{c.detail}</div>
                       </div>
                     </li>
                   ))}
@@ -99,19 +108,65 @@ export function PlanCard({ plan, actions, compact }: { plan: Plan; actions?: Rea
               </>
             )}
           </div>
+
           <div>
-            <h4>
-              Why this plan <Badge tone="good">numbers match solver output</Badge>
-            </h4>
-            <p className="explanation">{plan.explanation}</p>
-            <div className="chips">
-              {plan.citations.map((c) => (
-                <SourceChip key={c} id={c} />
-              ))}
+            <div className="label" style={{ marginBottom: 8 }}>
+              Days of stock after this plan
             </div>
-            {plan.decisionNote && <p className="muted small">Decision note: “{plan.decisionNote}”</p>}
+            <ChartGuide
+              open={false}
+              items={[
+                { mark: "bar-good", text: <>One bar per hospital: <b>days of stock it would have</b> if this plan goes ahead.</> },
+                { mark: "floor", text: <>The <b>dashed red line</b> is the {AMBER_BELOW}-day safety floor. A plan that pushes a bar left of it is rejected.</> },
+                { mark: "after", text: <>On {siteName(event.siteId ?? "")}, the <b>black mark</b> is how long its stock must last until the late order arrives. The bar should reach past it.</> },
+              ]}
+            />
+            <div className="bars" role="img" aria-label="Days of stock at each hospital after this plan">
+              {SITES.map((s) => {
+                const st = after.get(s.id);
+                if (!st) return null;
+                const days = coverageDays(st.onHand, st.usage, st.arrivals);
+                const tier = tierFor(days);
+                const receiving = s.id === event.siteId;
+                const needed = receiving && event.resupplyDay ? event.resupplyDay - 1 : undefined;
+                return (
+                  <div key={s.id} className="bar-row" style={{ cursor: "default", padding: "6px 4px" }} title={`${s.short}: ${formatDays(days)} days after this plan`}>
+                    <span className="site">
+                      {s.short}
+                      {receiving && <span className="muted"> · gets stock</span>}
+                    </span>
+                    <div className="bar-track">
+                      <span className="bar-zone red" style={{ left: 0, width: pct(7) }} />
+                      <span className="bar-zone amber" style={{ left: pct(7), width: `calc(${pct(AMBER_BELOW)} - ${pct(7)})` }} />
+                      <span className={`bar-fill ${TIER_TONE[tier]}`} style={{ width: pct(days) }} />
+                      <span className="bar-floor" style={{ left: pct(AMBER_BELOW) }} />
+                      {needed !== undefined && <span className="bar-after" style={{ left: pct(needed) }} title={`Needs ${needed} days until the delayed order arrives`} />}
+                    </div>
+                    <span className="bar-val">
+                      <b>{formatDays(days)}</b>d
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
+      )}
+
+      {!compact && (
+        <details className="why">
+          <summary>Why this plan, in the AI's words</summary>
+          <div className="inner">
+            <p>{plan.explanation}</p>
+            <span className="small muted">Every number in this text was checked against the calculation before it was shown.</span>
+            {plan.decisionNote && (
+              <p>
+                <b>Decision note:</b> “{plan.decisionNote}”
+              </p>
+            )}
+            <Sources ids={[plan.solverRun, ...plan.citations]} />
+          </div>
+        </details>
       )}
 
       {actions && <footer className="plan-actions">{actions}</footer>}
