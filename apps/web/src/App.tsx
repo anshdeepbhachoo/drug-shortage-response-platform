@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PAGE_TIPS, SHELL_TIPS, Tour } from "./components/Tour";
 import { SourceProvider } from "./components/ui";
+import { Welcome } from "./components/Welcome";
 import { USERS, timeLabel } from "./data/mock";
 import { STEPS, useStore } from "./lib/store";
 import type { Role } from "./lib/types";
@@ -93,13 +94,28 @@ export function App() {
       return true;
     }
   });
-  const [touring, setTouring] = useState(() => {
+  const [touring, setTouring] = useState(false);
+  const [welcoming, setWelcoming] = useState(() => {
     try {
-      return localStorage.getItem("tour-seen") !== "1";
+      return localStorage.getItem("welcome-seen") !== "1";
     } catch {
       return false;
     }
   });
+  const endWelcome = useCallback(
+    (role: Role, tour: boolean) => {
+      setWelcoming(false);
+      try {
+        localStorage.setItem("welcome-seen", "1");
+      } catch {
+        /* storage unavailable: the welcome may show again next visit */
+      }
+      if (role !== state.role) dispatch({ type: "role", role });
+      setView(HOME[role]);
+      setTouring(tour);
+    },
+    [state.role, dispatch],
+  );
   const endTour = useCallback(() => {
     setTouring(false);
     try {
@@ -250,6 +266,7 @@ export function App() {
         {activeView === "data" && <DataSources />}
 
         {touring && <Tour key={activeView} steps={tourSteps} onClose={endTour} />}
+        {welcoming && <Welcome role={state.role} onDone={endWelcome} />}
 
         <p className="foot-note">Prototype. Stock, usage, orders, emails and people are simulated.</p>
       </main>
