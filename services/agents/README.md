@@ -100,8 +100,13 @@ All commands from the repo root.
 .venv/bin/python -m pytest tests -q
 ```
 
+## Testing and swapping parts
+
+`process_email(email, data=None, llm=None, today=None)` takes its data source, model call and date as arguments. Defaults: the mock CSVs, Bedrock, and `MOCK_TODAY`. Importing `agent.py` needs no AWS settings; they are checked only when Bedrock is called. `model_io.py` holds the JSON helpers both pipelines share.
+
+Tests: `tests/test_agent.py` (signal → plan, fake model) and `tests/test_followup.py`.
+
 ## Known issues
 
-- `agent.py` catches `ValidationError` in `ask_for_model()` without importing it, so invalid model JSON raises `NameError` instead of retrying. Fix: `from pydantic import ValidationError`.
 - Nothing here is connected to the UI yet; there is no API layer.
 - Data comes from CSVs in `mock/`; the database is not wired in.

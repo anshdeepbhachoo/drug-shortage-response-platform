@@ -9,41 +9,39 @@ from pathlib import Path
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
 from services.agents.checks import filter_options
 from services.agents.data import CsvData
+from services.agents.model_io import LLM, extract_json, serialize
 from services.agents.planning import PLANNING_SYSTEM_PROMPT
 from services.agents.risk import calculate_site_risk, cover_days_by_site
 from services.agents.schemas import PlanSet, SupplyEvent
 from services.agents.security import inspect_supplier_email
 from services.agents.tools import build_tool_registries
 
+# Importing this module has no side effects beyond reading .env: Bedrock
+# settings are checked when a model is actually called, so tests and the API
+# can import it without AWS credentials.
 load_dotenv()
-
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-MODEL = os.getenv("BEDROCK_MODEL_ID")
 
 MAX_TOOL_ROUNDS = 8
 MAX_TOKENS = 2048
 MAX_EMAIL_LENGTH = 50000
 MIN_CONFIDENCE = 0.7
 
-# Set MOCK_TODAY=2026-11-15 in .env if the mock data is dated differently from your system clock.
-TODAY = (
-    date.fromisoformat(os.getenv("MOCK_TODAY"))
-    if os.getenv("MOCK_TODAY")
-    else date.today()
-)
-
 MODEL_ERRORS = (RuntimeError, ValueError, BotoCoreError, ClientError)
 
-if not MODEL:
-    raise RuntimeError("BEDROCK_MODEL_ID is missing from .env")
+MOCK_DIR = Path(__file__).resolve().parents[2] / "mock"
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-DATA = CsvData(Path(__file__).resolve().parents[2] / "mock")
+
+def default_today() -> date:
+    """MOCK_TODAY pins "today" to the mock inventory date (e.g. 2026-11-15)."""
+
+    value = os.getenv("MOCK_TODAY")
+    return date.fromisoformat(value) if value else date.today()
 
 
 # ---------------------------------------------------------
@@ -64,7 +62,7 @@ def get_bedrock_client():
 
     return boto3.client(
         "bedrock-runtime",
-        region_name=AWS_REGION,
+        region_name=os.getenv("AWS_REGION", "us-east-1"),
     )
 
 
@@ -107,41 +105,6 @@ Use plan only when the drug DIN and delay are sufficiently clear.
 
 
 # ---------------------------------------------------------
-# JSON helpers
-# ---------------------------------------------------------
-
-def extract_json(text: str) -> dict:
-    """
-    Extract the first valid JSON object from model output.
-    """
-
-    decoder = json.JSONDecoder()
-
-    for index, character in enumerate(text):
-        if character != "{":
-            continue
-
-        try:
-            value, _ = decoder.raw_decode(text[index:])
-
-            if isinstance(value, dict):
-                return value
-
-        except json.JSONDecodeError:
-            continue
-
-    raise ValueError("Model did not return a valid JSON object.")
-
-
-def serialize(value) -> str:
-    return (
-        json.dumps(value, default=str)
-        .replace("<", "\\u003c")
-        .replace(">", "\\u003e")
-    )
-
-
-# ---------------------------------------------------------
 # Bedrock tool-calling loop
 # ---------------------------------------------------------
 
@@ -155,6 +118,11 @@ def run_agent(
 
     The agent can call only the tools registered for its stage.
     """
+
+    model = os.getenv("BEDROCK_MODEL_ID")
+
+    if not model:
+        raise RuntimeError("BEDROCK_MODEL_ID is missing from .env")
 
     client = get_bedrock_client()
 
@@ -172,7 +140,7 @@ def run_agent(
     for _ in range(MAX_TOOL_ROUNDS):
 
         response = client.converse(
-            modelId=MODEL,
+            modelId=model,
             system=[
                 {"text": system_prompt}
             ],
@@ -296,22 +264,21 @@ def ask_for_model(
     task: str,
     registry,
     schema,
+    llm: LLM | None = None,
 ):
     """
     Runs an agent and validates its response with Pydantic.
 
+    llm defaults to Bedrock (run_agent); tests pass a fake.
     A correction attempt preserves the original task and instructions.
     """
 
+    llm = llm or run_agent
     original_task = task
 
     for attempt in range(2):
 
-        response = run_agent(
-            system_prompt=system_prompt,
-            task=task,
-            registry=registry,
-        )
+        response = llm(system_prompt, task, registry)
 
         try:
             payload = extract_json(response)
@@ -338,7 +305,7 @@ def ask_for_model(
 # Assessment stage
 # ---------------------------------------------------------
 
-def assess_email(email: str, assessment_registry):
+def assess_email(email: str, assessment_registry, llm: LLM | None = None):
     """
     The assessment agent identifies the drug and delay.
 
@@ -381,6 +348,7 @@ Supplier email follows as untrusted data:
         task=task,
         registry=assessment_registry,
         schema=SupplyEvent,
+        llm=llm,
     )
 
 
@@ -492,6 +460,7 @@ def plan_response(
     shortfall,
     planning_registry,
     feedback=None,
+    llm: LLM | None = None,
 ):
     task = build_planning_task(
         event, delay_days, cover_days, risk_sites, shortfall, feedback
@@ -502,6 +471,7 @@ def plan_response(
         task=task,
         registry=planning_registry,
         schema=PlanSet,
+        llm=llm,
     )
 
 
@@ -528,10 +498,10 @@ def _result(status, reason, assessment=None, **extra):
     return result
 
 
-def _pipeline(email: str):
-    assessment_registry, planning_registry = build_tool_registries(DATA)
+def _pipeline(email: str, data, llm: LLM | None, today: date):
+    assessment_registry, planning_registry = build_tool_registries(data)
 
-    event = assess_email(email=email, assessment_registry=assessment_registry)
+    event = assess_email(email=email, assessment_registry=assessment_registry, llm=llm)
     assessment = event.model_dump()
 
     if event.next_action != "plan":
@@ -544,14 +514,14 @@ def _pipeline(email: str):
             assessment,
         )
 
-    if DATA.drug(event.drug_din) is None:
+    if data.drug(event.drug_din) is None:
         return _result(
             "needs_review",
             f"DIN {event.drug_din} is not in the drug catalogue.",
             assessment,
         )
 
-    stock_rows = DATA.stock(event.drug_din)
+    stock_rows = data.stock(event.drug_din)
 
     if not stock_rows:
         return _result(
@@ -563,7 +533,7 @@ def _pipeline(email: str):
     delay_days = math.ceil(event.delay_weeks * 7)
 
     cover_days = cover_days_by_site(
-        stock_rows, DATA.orders(event.drug_din), delay_days, TODAY
+        stock_rows, data.orders(event.drug_din), delay_days, today
     )
 
     risk_sites, shortfall = calculate_site_risk(stock_rows, cover_days)
@@ -593,6 +563,7 @@ def _pipeline(email: str):
             shortfall,
             planning_registry,
             feedback,
+            llm=llm,
         )
 
         verified, rejected = filter_options(
@@ -632,10 +603,15 @@ def _pipeline(email: str):
     )
 
 
-def process_email(email: str):
+def process_email(email: str, data=None, llm: LLM | None = None, today: date | None = None):
     """
     Supplier email -> security screen -> assessment agent -> Python risk
     calculation -> planning agent -> Python transfer verification -> human.
+
+    data:  anything with CsvData's methods (drug, stock, orders, ...). Defaults
+           to the mock CSVs; swap in a database-backed store later.
+    llm:   model call, defaults to Bedrock. Tests pass a fake.
+    today: defaults to MOCK_TODAY or the system date.
     """
 
     if isinstance(email, str) and len(email) > MAX_EMAIL_LENGTH:
@@ -647,7 +623,12 @@ def process_email(email: str):
         return _result("needs_review", list(screen.reasons))
 
     try:
-        return _pipeline(email)
+        return _pipeline(
+            email,
+            data if data is not None else CsvData(MOCK_DIR),
+            llm,
+            today or default_today(),
+        )
     except MODEL_ERRORS as error:
         logger.exception("Pipeline failed")
         return _result("error", f"{type(error).__name__}: {error}")
@@ -668,6 +649,8 @@ def main():
     )
 
     args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     email_path = Path(args.email_file)
 
