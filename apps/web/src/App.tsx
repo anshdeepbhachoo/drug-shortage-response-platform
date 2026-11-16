@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { PAGE_TIPS, SHELL_TIPS, Tour } from "./components/Tour";
 import { SourceProvider } from "./components/ui";
 import { USERS, timeLabel } from "./data/mock";
 import { STEPS, useStore } from "./lib/store";
@@ -92,6 +93,21 @@ export function App() {
       return true;
     }
   });
+  const [touring, setTouring] = useState(() => {
+    try {
+      return localStorage.getItem("tour-seen") !== "1";
+    } catch {
+      return false;
+    }
+  });
+  const endTour = useCallback(() => {
+    setTouring(false);
+    try {
+      localStorage.setItem("tour-seen", "1");
+    } catch {
+      /* storage unavailable: the tour may show again next visit */
+    }
+  }, []);
   const toggleStory = () =>
     setStoryOpen((o) => {
       try {
@@ -113,6 +129,7 @@ export function App() {
   };
 
   const go = (v: ViewId) => {
+    setTouring(false);
     setView(v);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -137,6 +154,7 @@ export function App() {
   const story = STORY[state.step];
   const visibleNav = NAV.filter((n) => n.roles.includes(state.role));
   const activeView = visibleNav.some((n) => n.id === view) ? view : HOME[state.role];
+  const tourSteps = useMemo(() => [...SHELL_TIPS, ...(PAGE_TIPS[activeView] ?? [])], [activeView]);
 
   return (
     <SourceProvider>
@@ -158,6 +176,12 @@ export function App() {
               </button>
             ))}
           </nav>
+          <button className="tour-btn" onClick={() => setTouring(true)} aria-label="Show me around" title="Show me around">
+            <span className="q" aria-hidden>
+              ?
+            </span>
+            <span className="tour-label">Show me around</span>
+          </button>
           <div className="who">
             <span className="label">Viewing as</span>
             <div className="who-row">
@@ -224,6 +248,8 @@ export function App() {
         {activeView === "drafts" && <Drafts />}
         {activeView === "audit" && <Audit />}
         {activeView === "data" && <DataSources />}
+
+        {touring && <Tour key={activeView} steps={tourSteps} onClose={endTour} />}
 
         <p className="foot-note">Prototype. Stock, usage, orders, emails and people are simulated.</p>
       </main>

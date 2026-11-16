@@ -1,5 +1,6 @@
 /* ------------------------------------------------------------------
-   Tokens. One blue accent in both themes; neutrals lean slightly blue.
+   Tokens. One blue accent in both themes. Dark mode is a soft charcoal,
+   not black, with slightly dimmed text so it is easy on the eyes.
    Status colours are fixed and always paired with an icon + label.
 ------------------------------------------------------------------- */
 :root {
@@ -15,7 +16,7 @@
   --axis: #b7c5da;
   --accent: #1f6feb;
   --accent-ink: #ffffff;
-  --invert: #0f3b8c;
+  --invert: #2d63c8;
   --invert-ink: #ffffff;
 
   --good: #0ca30c;
@@ -44,19 +45,19 @@
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --page: #0a0f17;
-    --surface: #101722;
-    --surface-2: #18212f;
-    --ink: #e6edf7;
-    --ink-2: #b4c0d2;
-    --muted: #8593a9;
-    --line: rgba(140, 170, 220, 0.14);
-    --grid: #1b2433;
-    --axis: #2e3c52;
-    --accent: #5b9cff;
-    --accent-ink: #061430;
-    --invert: #5b9cff;
-    --invert-ink: #061430;
+    --page: #1c1f25;
+    --surface: #24282f;
+    --surface-2: #2c313a;
+    --ink: #dde2e9;
+    --ink-2: #b2b9c5;
+    --muted: #8d95a3;
+    --line: rgba(205, 215, 235, 0.1);
+    --grid: #2f343d;
+    --axis: #484f5c;
+    --accent: #84aee8;
+    --accent-ink: #15233b;
+    --invert: #84aee8;
+    --invert-ink: #15233b;
     --good-text: #3fc23f;
     --warn-text: #fab219;
     --crit-text: #ef6b6b;
@@ -69,19 +70,19 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #0a0f17;
-  --surface: #101722;
-  --surface-2: #18212f;
-  --ink: #e6edf7;
-  --ink-2: #b4c0d2;
-  --muted: #8593a9;
-  --line: rgba(140, 170, 220, 0.14);
-  --grid: #1b2433;
-  --axis: #2e3c52;
-  --accent: #5b9cff;
-  --accent-ink: #061430;
-  --invert: #5b9cff;
-  --invert-ink: #061430;
+  --page: #1c1f25;
+  --surface: #24282f;
+  --surface-2: #2c313a;
+  --ink: #dde2e9;
+  --ink-2: #b2b9c5;
+  --muted: #8d95a3;
+  --line: rgba(205, 215, 235, 0.1);
+  --grid: #2f343d;
+  --axis: #484f5c;
+  --accent: #84aee8;
+  --accent-ink: #15233b;
+  --invert: #84aee8;
+  --invert-ink: #15233b;
   --good-text: #3fc23f;
   --warn-text: #fab219;
   --crit-text: #ef6b6b;
@@ -408,6 +409,8 @@ details.why p { color: var(--ink-2); line-height: 1.65; }
   .sidebar { position: sticky; z-index: 20; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
   .who { flex: 1; min-width: 0; flex-direction: row; align-items: center; padding: 0; border: 0; justify-content: flex-end; }
   .who .label { display: none; }
+  .who-row { flex: 1; min-width: 0; }
+  .brand { display: none; }
   .tabs { order: 3; flex-basis: 100%; flex-direction: row; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); padding-right: 28px; }
   .tabs button { width: auto; flex: none; }
   .tabs button.active::before { display: none; }
@@ -450,3 +453,20 @@ details.why p { color: var(--ink-2); line-height: 1.65; }
 .gk-cost { background: var(--series-1); border-radius: 0 4px 4px 0; }
 .gk-ok { background: var(--good); border-radius: 2px; }
 .gk-bad { background: var(--warn); border-radius: 2px; width: 10px; }
+
+/* ---------- Guided tour ---------- */
+.tour-btn { display: flex; align-items: center; gap: 8px; border: 1px dashed var(--axis); background: none; border-radius: 10px; padding: 8px 10px; color: var(--ink-2); font-size: 14px; text-align: left; }
+.tour-btn:hover { border-color: var(--accent); color: var(--ink); }
+.tour-btn .q { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700; flex: none; }
+.tour-spot { position: fixed; z-index: 90; border-radius: 12px; border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(10, 14, 22, 0.45); pointer-events: none; }
+.tour-pop { position: fixed; z-index: 100; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28); display: flex; flex-direction: column; gap: 6px; }
+.tour-pop h4 { font-size: 16px; font-weight: 600; }
+.tour-pop p { font-size: 14px; color: var(--ink-2); line-height: 1.5; }
+.tour-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 8px; }
+@media (prefers-reduced-motion: no-preference) {
+  .tour-spot, .tour-pop { transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease; }
+}
+@media (max-width: 760px) {
+  .tour-btn { order: 2; width: 36px; height: 36px; padding: 0; justify-content: center; border-style: solid; border-color: var(--line); }
+  .tour-btn .tour-label { display: none; }
+}
