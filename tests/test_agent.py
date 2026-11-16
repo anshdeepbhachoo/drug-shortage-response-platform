@@ -24,6 +24,9 @@ from services.agents.security import inspect_supplier_email
 
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = ROOT / "mock"
+# Isolated 3-site fixture: exact cover_days / shortfall regression for the
+# original demo. Expanded six-hospital data is exercised in test_synthetic_data.py.
+DATA = ROOT / "tests" / "fixtures" / "baseline_three_site"
 TODAY = date(2026, 11, 15)
 
 
@@ -76,7 +79,7 @@ def transfer(from_site, units, to_site="A"):
 
 def run(model, email_name="clear.txt", email=None):
     text = email if email is not None else (MOCK / "emails" / email_name).read_text()
-    return process_email(text, data=CsvData(MOCK), llm=model, today=TODAY)
+    return process_email(text, data=CsvData(DATA), llm=model, today=TODAY)
 
 
 # ---------------------------------------------------------

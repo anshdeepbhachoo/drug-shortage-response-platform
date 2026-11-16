@@ -1,0 +1,376 @@
+[
+  {
+    "day": 1,
+    "date": "2026-11-15",
+    "delay_days_used_for_risk": 21,
+    "at_risk": [
+      "A"
+    ],
+    "shortfall": {
+      "A": 180
+    },
+    "sites": {
+      "A": {
+        "on_hand": 60,
+        "daily_use": 10.0,
+        "days_of_supply": 6.0,
+        "cover_days": 24
+      },
+      "B": {
+        "on_hand": 400,
+        "daily_use": 8.0,
+        "days_of_supply": 50.0,
+        "cover_days": 21
+      },
+      "C": {
+        "on_hand": 150,
+        "daily_use": 6.0,
+        "days_of_supply": 25.0,
+        "cover_days": 21
+      },
+      "D": {
+        "on_hand": 200,
+        "daily_use": 7.0,
+        "days_of_supply": 28.6,
+        "cover_days": 21
+      }
+    }
+  },
+  {
+    "day": 2,
+    "date": "2026-11-16",
+    "delay_days_used_for_risk": 0,
+    "at_risk": [
+      "A"
+    ],
+    "shortfall": {
+      "A": 160
+    },
+    "sites": {
+      "A": {
+        "on_hand": 50,
+        "daily_use": 10.0,
+        "days_of_supply": 5.0,
+        "cover_days": 21
+      },
+      "B": {
+        "on_hand": 392,
+        "daily_use": 8.0,
+        "days_of_supply": 49.0,
+        "cover_days": 21
+      },
+      "C": {
+        "on_hand": 144,
+        "daily_use": 6.0,
+        "days_of_supply": 24.0,
+        "cover_days": 21
+      },
+      "D": {
+        "on_hand": 193,
+        "daily_use": 7.0,
+        "days_of_supply": 27.6,
+        "cover_days": 21
+      }
+    }
+  },
+  {
+    "day": 3,
+    "date": "2026-11-17",
+    "delay_days_used_for_risk": 0,
+    "at_risk": [
+      "A"
+    ],
+    "shortfall": {
+      "A": 160
+    },
+    "sites": {
+      "A": {
+        "on_hand": 40,
+        "daily_use": 10.0,
+        "days_of_supply": 4.0,
+        "cover_days": 20
+      },
+      "B": {
+        "on_hand": 384,
+        "daily_use": 8.0,
+        "days_of_supply": 48.0,
+        "cover_days": 20
+      },
+      "C": {
+        "on_hand": 138,
+        "daily_use": 6.0,
+        "days_of_supply": 23.0,
+        "cover_days": 20
+      },
+      "D": {
+        "on_hand": 186,
+        "daily_use": 7.0,
+        "days_of_supply": 26.6,
+        "cover_days": 20
+      }
+    }
+  },
+  {
+    "day": 4,
+    "date": "2026-11-18",
+    "delay_days_used_for_risk": 0,
+    "at_risk": [
+      "A"
+    ],
+    "shortfall": {
+      "A": 160
+    },
+    "sites": {
+      "A": {
+        "on_hand": 30,
+        "daily_use": 10.0,
+        "days_of_supply": 3.0,
+        "cover_days": 19
+      },
+      "B": {
+        "on_hand": 376,
+        "daily_use": 8.0,
+        "days_of_supply": 47.0,
+        "cover_days": 19
+      },
+      "C": {
+        "on_hand": 132,
+        "daily_use": 6.0,
+        "days_of_supply": 22.0,
+        "cover_days": 19
+      },
+      "D": {
+        "on_hand": 179,
+        "daily_use": 7.0,
+        "days_of_supply": 25.6,
+        "cover_days": 19
+      }
+    }
+  },
+  {
+    "day": 5,
+    "date": "2026-11-19",
+    "delay_days_used_for_risk": 0,
+    "at_risk": [
+      "A"
+    ],
+    "shortfall": {
+      "A": 60
+    },
+    "sites": {
+      "A": {
+        "on_hand": 120,
+        "daily_use": 10.0,
+        "days_of_supply": 12.0,
+        "cover_days": 18
+      },
+      "B": {
+        "on_hand": 268,
+        "daily_use": 8.0,
+        "days_of_supply": 33.5,
+        "cover_days": 18
+      },
+      "C": {
+        "on_hand": 126,
+        "daily_use": 6.0,
+        "days_of_supply": 21.0,
+        "cover_days": 18
+      },
+      "D": {
+        "on_hand": 172,
+        "daily_use": 7.0,
+        "days_of_supply": 24.6,
+        "cover_days": 18
+      }
+    }
+  },
+  {
+    "day": 6,
+    "date": "2026-11-20",
+    "delay_days_used_for_risk": 0,
+    "at_risk": [
+      "A",
+      "C"
+    ],
+    "shortfall": {
+      "A": 60,
+      "C": 90
+    },
+    "sites": {
+      "A": {
+        "on_hand": 110,
+        "daily_use": 10.0,
+        "days_of_supply": 11.0,
+        "cover_days": 17
+      },
+      "B": {
+        "on_hand": 260,
+        "daily_use": 8.0,
+        "days_of_supply": 32.5,
+        "cover_days": 17
+      },
+      "C": {
+        "on_hand": 114,
+        "daily_use": 12.0,
+        "days_of_supply": 9.5,
+        "cover_days": 17
+      },
+      "D": {
+        "on_hand": 165,
+        "daily_use": 7.0,
+        "days_of_supply": 23.6,
+        "cover_days": 17
+      }
+    }
+  },
+  {
+    "day": 7,
+    "date": "2026-11-21",
+    "delay_days_used_for_risk": 0,
+    "at_risk": [
+      "A",
+      "C"
+    ],
+    "shortfall": {
+      "A": 60,
+      "C": 90
+    },
+    "sites": {
+      "A": {
+        "on_hand": 100,
+        "daily_use": 10.0,
+        "days_of_supply": 10.0,
+        "cover_days": 16
+      },
+      "B": {
+        "on_hand": 252,
+        "daily_use": 8.0,
+        "days_of_supply": 31.5,
+        "cover_days": 16
+      },
+      "C": {
+        "on_hand": 102,
+        "daily_use": 12.0,
+        "days_of_supply": 8.5,
+        "cover_days": 16
+      },
+      "D": {
+        "on_hand": 158,
+        "daily_use": 7.0,
+        "days_of_supply": 22.6,
+        "cover_days": 16
+      }
+    }
+  },
+  {
+    "day": 8,
+    "date": "2026-11-22",
+    "delay_days_used_for_risk": 0,
+    "at_risk": [
+      "C"
+    ],
+    "shortfall": {
+      "C": 90
+    },
+    "sites": {
+      "A": {
+        "on_hand": 170,
+        "daily_use": 10.0,
+        "days_of_supply": 17.0,
+        "cover_days": 15
+      },
+      "B": {
+        "on_hand": 244,
+        "daily_use": 8.0,
+        "days_of_supply": 30.5,
+        "cover_days": 15
+      },
+      "C": {
+        "on_hand": 90,
+        "daily_use": 12.0,
+        "days_of_supply": 7.5,
+        "cover_days": 15
+      },
+      "D": {
+        "on_hand": 151,
+        "daily_use": 7.0,
+        "days_of_supply": 21.6,
+        "cover_days": 15
+      }
+    }
+  },
+  {
+    "day": 9,
+    "date": "2026-11-23",
+    "delay_days_used_for_risk": 0,
+    "at_risk": [
+      "C"
+    ],
+    "shortfall": {
+      "C": 90
+    },
+    "sites": {
+      "A": {
+        "on_hand": 160,
+        "daily_use": 10.0,
+        "days_of_supply": 16.0,
+        "cover_days": 14
+      },
+      "B": {
+        "on_hand": 236,
+        "daily_use": 8.0,
+        "days_of_supply": 29.5,
+        "cover_days": 14
+      },
+      "C": {
+        "on_hand": 78,
+        "daily_use": 12.0,
+        "days_of_supply": 6.5,
+        "cover_days": 14
+      },
+      "D": {
+        "on_hand": 144,
+        "daily_use": 7.0,
+        "days_of_supply": 20.6,
+        "cover_days": 14
+      }
+    }
+  },
+  {
+    "day": 10,
+    "date": "2026-11-24",
+    "delay_days_used_for_risk": 0,
+    "at_risk": [
+      "C"
+    ],
+    "shortfall": {
+      "C": 6
+    },
+    "sites": {
+      "A": {
+        "on_hand": 150,
+        "daily_use": 10.0,
+        "days_of_supply": 15.0,
+        "cover_days": 13
+      },
+      "B": {
+        "on_hand": 228,
+        "daily_use": 8.0,
+        "days_of_supply": 28.5,
+        "cover_days": 13
+      },
+      "C": {
+        "on_hand": 72,
+        "daily_use": 6.0,
+        "days_of_supply": 12.0,
+        "cover_days": 13
+      },
+      "D": {
+        "on_hand": 137,
+        "daily_use": 7.0,
+        "days_of_supply": 19.6,
+        "cover_days": 13
+      }
+    }
+  }
+]

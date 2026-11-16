@@ -28,7 +28,7 @@ Both run on **Amazon Bedrock** (Claude Haiku 4.5 through the Converse API) and b
 
 | File | Purpose |
 |---|---|
-| `data.py` | `CsvData`: loads the mock CSVs in `mock/` (drugs, sites, usage, inventory, open orders, substitutions). `stock(din)` returns on-hand, daily use and days of supply per site. Will be swapped for the database later. |
+| `data.py` | `CsvData`: loads the mock CSVs in `mock/` (drugs, sites, usage, inventory, open orders, substitutions). `stock(din)` returns on-hand, daily use and days of supply per site. Will be swapped for the database later. Synthetic-data handoff: [`docs/SYNTHETIC_DATA.md`](../../docs/SYNTHETIC_DATA.md). Inspect helper: `python inspect_synthetic.py summary`. |
 | `tools.py` | `AgentTool` (one tool: name, description, JSON schema, Python function) and `ToolRegistry` (the allow-list an agent may call; rejects unknown tools and bad arguments). `build_tool_registries()` makes the assessment and planning tool sets. |
 | `schemas.py` | Pydantic models: `SupplyEvent`, `Move`, `PlanOption`, `PlanSet`. |
 | `security.py` | `inspect_supplier_email()`: regex screen for instruction override, role impersonation and unauthorised-action wording. |

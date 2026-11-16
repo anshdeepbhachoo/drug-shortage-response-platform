@@ -1,0 +1,4 @@
+From: orders@northgatelabs.example
+Subject: Revised ETA for Amiodarone orders O-1007 / O-1008
+
+Amiodarone 150 mg/3 mL ampule shipments for Central General and Regional Medical Centre (O-1007, O-1008) move from November 17 to December 1.
