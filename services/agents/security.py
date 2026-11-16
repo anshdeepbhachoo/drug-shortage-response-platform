@@ -20,10 +20,14 @@ PATTERNS = {
         r"administrator instruction)\b",
         re.IGNORECASE,
     ),
+    # "approve" on its own is normal supplier wording ("please approve the
+    # revised delivery date"), so it only counts when aimed at blanket or
+    # stock-moving actions.
     "unauthorized_action": re.compile(
-        r"\b(approve|execute|authorize|transfer all|"
-        r"bypass approval|do not tell anyone)\b",
-        re.IGNORECASE,
+        r"\b(approve|execute|authori[sz]e)\b.{0,40}"
+        r"\b(all|every|transfers?|pending|immediately)\b"
+        r"|\b(transfer all|bypass approval|do not tell anyone)\b",
+        re.IGNORECASE | re.DOTALL,
     ),
 }
 

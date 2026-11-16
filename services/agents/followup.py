@@ -45,13 +45,11 @@ from services.agents.followup_schemas import (
     SiteReply,
     TransferRequest,
 )
+from services.agents.model_io import LLM, extract_json, serialize
 from services.agents.security import inspect_supplier_email
 from services.agents.tools import AgentTool, ToolRegistry
 
 logger = logging.getLogger(__name__)
-
-# llm(system_prompt, task, registry) -> model text. agent.run_agent fits this.
-LLM = Callable[[str, str, ToolRegistry], str]
 
 
 # ---------------------------------------------------------
@@ -121,30 +119,6 @@ OUTPUT: one JSON object, no Markdown, no commentary:
 # ---------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------
-
-def extract_json(text: str) -> dict:
-    """First JSON object in the model's text (same approach as agent.py)."""
-
-    decoder = json.JSONDecoder()
-    for index, character in enumerate(text):
-        if character != "{":
-            continue
-        try:
-            value, _ = decoder.raw_decode(text[index:])
-            if isinstance(value, dict):
-                return value
-        except json.JSONDecodeError:
-            continue
-    raise ValueError("Model did not return a valid JSON object.")
-
-
-def serialize(value) -> str:
-    return (
-        json.dumps(value, default=str)
-        .replace("<", "\\u003c")
-        .replace(">", "\\u003e")
-    )
-
 
 def load_requests(path) -> list[TransferRequest]:
     import csv
