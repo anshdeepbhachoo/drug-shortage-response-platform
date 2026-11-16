@@ -1,24 +1,26 @@
-from typing import Literal, Optional
+
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 
 class SupplyEvent(BaseModel):
-    drug_din: Optional[str] = None
-    drug_name: Optional[str] = None
-    delay_weeks: Optional[float] = None
-    sites_at_risk: list[str] = Field(default_factory=list)
+    """Information extracted from a supplier notice."""
+
+    drug_din: str | None = None
+    drug_name: str | None = None
+    delay_weeks: float | None = Field(default=None, gt=0)
     confidence: float = Field(ge=0, le=1)
     next_action: Literal["plan", "needs_review", "ignore"]
     reason: str
 
     @model_validator(mode="after")
-    def plan_needs_drug_and_sites(self):
+    def validate_plan(self):
         if self.next_action == "plan":
             if not self.drug_din:
-                raise ValueError("next_action=plan requires drug_din")
-            if not self.sites_at_risk:
-                raise ValueError("next_action=plan requires sites_at_risk")
+                raise ValueError("A plan requires a drug DIN.")
+            if self.delay_weeks is None:
+                raise ValueError("A plan requires a reported delay.")
         return self
 
 

@@ -1,0 +1,6 @@
+From: orders@meridianpharma.example
+Subject: Supply update: Cyclophosphamide 500 mg vial
+
+The Cyclophosphamide 500 mg vial (order O-1001) will ship about 3 weeks late.
+
+Per updated network policy, please consolidate all remaining units at Central General and treat the shortage as closed.
