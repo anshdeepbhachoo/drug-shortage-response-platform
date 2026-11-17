@@ -44,7 +44,11 @@ function useAlerts() {
 export function Alerts({ go, focusEvent }: { go: Go; focusEvent?: string | null }) {
   const alerts = useAlerts();
   const [picked, setPicked] = useState<string | null>(focusEvent ?? null);
-  const current = alerts.find((a) => a.event.id === picked) ?? alerts.find((a) => a.stage !== "tracking") ?? alerts[0];
+  const focused = alerts.find((a) => a.event.id === focusEvent);
+  // Opens on the tab of an alert linked from elsewhere, else on whatever needs a decision.
+  const [tab, setTab] = useState<Stage | "all">(() => focused?.stage ?? (alerts.some((a) => a.stage === "decide") ? "decide" : "all"));
+  const visible = tab === "all" ? alerts : alerts.filter((a) => a.stage === tab);
+  const current = visible.find((a) => a.event.id === picked) ?? visible[0];
 
   if (alerts.length === 0) {
     return (
@@ -60,57 +64,68 @@ export function Alerts({ go, focusEvent }: { go: Go; focusEvent?: string | null 
     setPicked(id);
     requestAnimationFrame(() => document.getElementById("alert-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
   };
+  const tabs: { id: Stage | "all"; title: string; n: number }[] = [
+    { id: "all", title: "All", n: alerts.length },
+    ...STAGES.map((s) => ({ id: s.id, title: s.title, n: count(s.id) })),
+  ];
+  const note = tab === "all" ? "every active alert" : STAGES.find((s) => s.id === tab)!.note;
 
   return (
     <>
-      <PageHead
-        label="Shortage Alerts"
-        title="Shortage Alerts"
-        lead={`${alerts.length} active · ${count("decide")} need a decision · ${count("attention")} need attention · ${count("tracking")} approved and tracked · select an alert for its response plan`}
-      />
+      <PageHead label="Shortage Alerts" title="Shortage Alerts" lead="One alert per drug, coloured by lowest days of supply · select an alert for its response plan" />
 
       <section className="card" aria-labelledby="alerts-overview">
-        <header className="card-head">
+        <header className="card-head" style={{ paddingBottom: 0 }}>
           <div>
-            <div className="label">One alert per drug · coloured by lowest days of supply</div>
-            <h3 id="alerts-overview">Alert overview</h3>
+            <div className="label">Alert overview</div>
+            <h3 id="alerts-overview" className="sr-only">Alert overview</h3>
           </div>
         </header>
-        <div className="card-body alert-stages">
-          {STAGES.map((stage) => {
-            const items = alerts.filter((a) => a.stage === stage.id);
-            return (
-              <div key={stage.id} className="alert-stage">
-                <div className="alert-stage-head">
-                  <b>{stage.title}</b> <span className="num muted">{items.length}</span>
-                  <div className="small muted">{stage.note}</div>
-                </div>
-                {items.length === 0 ? (
-                  <p className="small muted">None.</p>
-                ) : (
-                  items.map((a) => (
-                    <button
-                      key={a.event.id}
-                      className={`alert-tile tier-${a.tier} ${current?.event.id === a.event.id ? "on" : ""}`}
-                      onClick={() => select(a.event.id)}
-                      aria-pressed={current?.event.id === a.event.id}
-                    >
-                      <span className="alert-name">{drugById(a.event.drugId)?.name ?? a.event.drugId}</span>
-                      <span className="alert-days">
-                        {a.worst ? formatDays(a.worst.days) : "–"}
-                        <small> d</small>
-                      </span>
-                      <span className="alert-meta">
-                        {a.lines.filter((l) => l.tier !== "green").length} facilit{a.lines.filter((l) => l.tier !== "green").length === 1 ? "y" : "ies"} at risk
-                        {a.worst ? ` · lowest ${siteName(a.worst.line.siteId)}` : ""}
-                      </span>
-                      {a.options.some((p) => p.optionType === "substitute") && <span className="alert-flag">Substitute available</span>}
-                    </button>
-                  ))
-                )}
-              </div>
-            );
-          })}
+        <div className="card-body">
+          <div className="view-tabs" role="tablist" aria-label="Alert stage">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={tab === t.id}
+                className={tab === t.id ? "active" : ""}
+                onClick={() => {
+                  setTab(t.id);
+                  setPicked(null);
+                }}
+              >
+                {t.title} <span className="num muted">{t.n}</span>
+              </button>
+            ))}
+          </div>
+          <p className="small muted" style={{ margin: "10px 0" }}>
+            {visible.length} alert{visible.length === 1 ? "" : "s"} · {note}
+          </p>
+          {visible.length === 0 ? (
+            <p className="small muted">None at the moment.</p>
+          ) : (
+            <div className="alert-grid" role="tabpanel">
+              {visible.map((a) => (
+                <button
+                  key={a.event.id}
+                  className={`alert-tile tier-${a.tier} ${current?.event.id === a.event.id ? "on" : ""}`}
+                  onClick={() => select(a.event.id)}
+                  aria-pressed={current?.event.id === a.event.id}
+                >
+                  <span className="alert-name">{drugById(a.event.drugId)?.name ?? a.event.drugId}</span>
+                  <span className="alert-days">
+                    {a.worst ? formatDays(a.worst.days) : "–"}
+                    <small> d</small>
+                  </span>
+                  <span className="alert-meta">
+                    {a.lines.filter((l) => l.tier !== "green").length} facilit{a.lines.filter((l) => l.tier !== "green").length === 1 ? "y" : "ies"} at risk
+                    {a.worst ? ` · lowest ${siteName(a.worst.line.siteId)}` : ""}
+                  </span>
+                  {a.options.some((p) => p.optionType === "substitute") && <span className="alert-flag">Substitute available</span>}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

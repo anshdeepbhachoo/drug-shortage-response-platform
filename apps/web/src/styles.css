@@ -809,3 +809,20 @@ details.sources summary::before, details.why summary::after { font-family: var(-
 .sc-resp { min-width: 0; overflow: hidden; }
 .sc-resp .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .risk-tile .risk-after { grid-area: after; font-size: 12px; font-weight: 600; margin-top: 6px; padding: 2px 6px; justify-self: start; background: rgba(255, 255, 255, 0.22); border-radius: 2px; }
+
+/* ---------- Facility detail tables ---------- */
+.detail-table th, .detail-table td { padding: 8px 12px; vertical-align: middle; }
+.detail-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.detail-table tbody tr:hover { background: var(--surface-2); }
+.detail-action { text-align: right; white-space: nowrap; }
+
+/* ---------- Shortage Alerts: tabbed overview ---------- */
+.alert-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.alert-grid .alert-name { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.3; }
+.detail-table .route { white-space: nowrap; }
+.route-arrow { margin: 0 8px; color: var(--muted); }
+.role-chip { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 2px; }
+.role-chip.in { background: var(--good-wash); color: var(--good-text); }
+.role-chip.out { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+.overdue { margin-left: 4px; font-size: 12px; font-weight: 600; padding: 1px 6px; border-radius: 2px; background: var(--crit-wash); color: var(--crit-text); }

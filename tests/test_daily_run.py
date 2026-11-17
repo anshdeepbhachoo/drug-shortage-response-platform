@@ -323,3 +323,4 @@ def test_home_page_gets_day_reports_and_followups_in_plain_words(engine):
     [follow] = state["followups"]
     assert (follow["from"], follow["to"], follow["units"], follow["decision"]) == ("Northside", "Central General", 180, "nudge")
     assert follow["status"] == "Nudged: no confirmation yet"
+    assert follow["expectedBy"].startswith("2026-11-16T12:00")      # approved Nov 15 at noon + 24 h

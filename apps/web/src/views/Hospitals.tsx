@@ -157,80 +157,157 @@ export function Hospitals({ go }: { go: Go }) {
   );
 }
 
+/** "Nov 16, 12:00" in the simulated clock's own terms (stored as UTC, shown as written). */
+function arrival(iso: string) {
+  const d = new Date(iso);
+  const day = d.toLocaleDateString("en-CA", { month: "short", day: "numeric", timeZone: "UTC" });
+  const time = d.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+  return `${day}, ${time}`;
+}
+
 function HospitalDetail({ h, go }: { h: ReturnType<typeof useHospitals>[number]; go: Go }) {
   const { state } = useStore();
-  const plans = [...new Set(state.plans.filter((p) => p.status === "pending-approval" && (p.sites ?? []).includes(h.site.id)).map((p) => p.solverRun))];
+  const followups = state.live?.followups ?? [];
+  // Drugs where this facility gives stock in a plan waiting for approval, without being at risk itself.
+  const donorDrugs = [
+    ...new Set(
+      state.plans
+        .filter((p) => p.status === "pending-approval" && p.transfers.some((t) => t.from === h.site.id))
+        .map((p) => p.drugId),
+    ),
+  ].filter((drugId) => !h.atRisk.some((l) => l.line.drugId === drugId));
+  const rows = [
+    ...h.atRisk.map((l) => ({ ...l, donor: false })),
+    ...donorDrugs.flatMap((drugId) => {
+      const line = state.stock.find((l) => l.siteId === h.site.id && l.drugId === drugId);
+      return line ? [{ line, days: lineCoverage(line), tier: tierFor(lineCoverage(line), line.safetyDays) as Tier, donor: true }] : [];
+    }),
+  ];
   const transfers = [...h.incoming.map((f) => ({ f, dir: "in" as const })), ...h.outgoing.map((f) => ({ f, dir: "out" as const }))];
+
   return (
     <Card label="Facility detail" title={`${h.site.name} · open actions`}>
-      <div className="grid-even">
+      <div className="stack" style={{ gap: 20 }}>
         <div>
-          <div className="label" style={{ marginBottom: 8 }}>Items at risk</div>
-          {h.atRisk.length === 0 ? (
-            <p className="small muted">Every drug has at least 14 days here.</p>
+          <div className="label" style={{ marginBottom: 8 }}>Items requiring action</div>
+          {rows.length === 0 ? (
+            <p className="small muted">Every drug has at least 14 days of supply here.</p>
           ) : (
-            <ul className="tile-rows">
-              {h.atRisk.map((l) => {
-                const alert = alertFor(state.events, l.line.drugId);
-                const response = responseFor(l.line.drugId, state.events, state.plans, state.live?.followups ?? []);
-                return (
-                  <li key={l.line.drugId}>
-                    <span>
-                      <b>{drugById(l.line.drugId)?.name}</b> · {formatDays(l.days)} d ·{" "}
-                      <Status tone={response.tone}>
-                        {response.label}
-                        {response.detail ? ` · ${response.detail}` : ""}
-                      </Status>
-                    </span>
-                    {alert && (
-                      <button className="link small" onClick={() => go("alerts", alert.id)}>
-                        Problem →
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="tablewrap">
+              <table className="table detail-table">
+                <thead>
+                  <tr>
+                    <th>Drug</th>
+                    <th>Critical list</th>
+                    <th className="num">Days of supply</th>
+                    <th>Runs out</th>
+                    <th>Risk</th>
+                    <th>Response</th>
+                    <th aria-label="Action" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const drug = drugById(r.line.drugId);
+                    const alert = alertFor(state.events, r.line.drugId);
+                    const response = responseFor(r.line.drugId, state.events, state.plans, followups);
+                    return (
+                      <tr key={r.line.drugId}>
+                        <td>
+                          <b>{drug?.name ?? r.line.drugId}</b>
+                        </td>
+                        <td>{drug?.criticalList ? "Yes" : "No"}</td>
+                        <td className="num">{formatDays(r.days)}</td>
+                        <td>{r.days >= 60 ? "60+ days" : dayLabel(Math.floor(r.days))}</td>
+                        <td>
+                          {r.donor ? (
+                            <span className="small muted">Donor</span>
+                          ) : (
+                            <Status tone={r.tier === "red" ? "crit" : r.tier === "amber" ? "warn" : "good"}>
+                              {r.tier === "red" ? "Critical" : r.tier === "amber" ? "Watch" : "OK"}
+                            </Status>
+                          )}
+                        </td>
+                        <td>
+                          <Status tone={response.tone}>
+                            {r.donor && response.stage === "decide" ? "Pending approval · gives stock" : response.label}
+                            {response.detail ? ` · ${response.detail}` : ""}
+                          </Status>
+                        </td>
+                        <td className="detail-action">
+                          {alert &&
+                            (response.stage === "decide" ? (
+                              <button className="link small" onClick={() => go("approvals", alert.id)}>
+                                Decide →
+                              </button>
+                            ) : (
+                              <button className="link small" onClick={() => go("alerts", alert.id)}>
+                                View alert →
+                              </button>
+                            ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
-        <div className="stack" style={{ gap: 16 }}>
-          <div>
-            <div className="label" style={{ marginBottom: 8 }}>Pending approvals</div>
-            {plans.length === 0 ? (
-              <p className="small muted">None involve this hospital.</p>
-            ) : (
-              <ul className="tile-rows">
-                {plans.map((run) => {
-                  const first = state.plans.find((p) => p.solverRun === run)!;
-                  return (
-                    <li key={run}>
-                      <span>{drugById(first.drugId)?.name}</span>
-                      <button className="link small" onClick={() => go("approvals")}>
-                        Decide →
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-          <div>
-            <div className="label" style={{ marginBottom: 8 }}>Approved transfers</div>
-            {transfers.length === 0 ? (
-              <p className="small muted">None in or out.</p>
-            ) : (
-              <ul className="tile-rows">
-                {transfers.map(({ f, dir }) => (
-                  <li key={f.id}>
-                    <span>
-                      {dir === "in" ? `${f.units} ${f.drug.split(" ")[0]} from ${f.from}` : `${f.units} ${f.drug.split(" ")[0]} to ${f.to}`}
-                    </span>
-                    <Status tone={f.decision ? FOLLOW_TONE[f.decision] ?? "neutral" : "neutral"}>{f.status.split(":")[0]}</Status>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+
+        <div>
+          <div className="label" style={{ marginBottom: 8 }}>Approved transfers</div>
+          {transfers.length === 0 ? (
+            <p className="small muted">No approved transfers in or out.</p>
+          ) : (
+            <div className="tablewrap">
+              <table className="table detail-table">
+                <thead>
+                  <tr>
+                    <th>Drug</th>
+                    <th>Route</th>
+                    <th>This facility</th>
+                    <th className="num">Units</th>
+                    <th>Expected by</th>
+                    <th>Follow-up</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transfers.map(({ f, dir }) => (
+                    <tr key={f.id}>
+                      <td>
+                        <b>{f.drug}</b>
+                      </td>
+                      <td className="route">
+                        {dir === "out" ? <b>{f.from}</b> : f.from}
+                        <span className="route-arrow" aria-label="to">→</span>
+                        {dir === "in" ? <b>{f.to}</b> : f.to}
+                      </td>
+                      <td>
+                        <span className={`role-chip ${dir}`}>{dir === "in" ? "Receiving" : "Sending"}</span>
+                      </td>
+                      <td className="num">{f.units}</td>
+                      <td className="nowrap">
+                        {f.expectedBy ? arrival(f.expectedBy) : "–"}
+                        {f.decision === "close" ? (
+                          <span className="small" style={{ color: "var(--good-text)" }}> · arrived</span>
+                        ) : (f.hoursOverdue ?? 0) > 0 ? (
+                          <span className="overdue"> overdue {Math.round(f.hoursOverdue!)} h</span>
+                        ) : null}
+                      </td>
+                      <td>
+                        {f.decision ? (
+                          <Status tone={FOLLOW_TONE[f.decision] ?? "neutral"}>{f.status.split(":")[0]}</Status>
+                        ) : (
+                          <span className="small muted">First check this evening</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </Card>
