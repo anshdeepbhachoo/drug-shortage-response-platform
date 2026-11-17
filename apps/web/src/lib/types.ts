@@ -50,6 +50,12 @@ export interface SupplyEvent {
   atMin: number;
   status: "open" | "mitigated" | "monitoring";
   resupplyDay?: number;
+  /** Live data: every signal that fed this alert (stock watch, emails, reports, people). */
+  evidence?: { source: string; ref: string; summary: string; at?: string }[];
+  /** Live data: what is happening with its current plan, in words. */
+  planState?: string;
+  /** Live data: hospitals affected. */
+  sites?: string[];
 }
 
 export interface Transfer {
@@ -97,6 +103,9 @@ export interface Plan {
   citations: string[];
   status: PlanStatus;
   decisionNote?: string;
+  /** Live data: hospitals this option involves (at risk, or sending/receiving stock). */
+  sites?: string[];
+  createdAt?: string;
 }
 
 export interface Extraction {

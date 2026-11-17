@@ -1,17 +1,19 @@
 import type { Drug, Email, Role, Site, SourceRecord, StockLine, SupplyEvent } from "../lib/types";
 
-/** Day 0 of the simulated clock. Every ETA is stored as a day offset from here. */
-export const SCENARIO_START = new Date(2026, 10, 12, 8, 0);
+/** Day 0 of the simulated clock. Every ETA is stored as a day offset from here.
+ *  In live mode it becomes the stock day being viewed (see applyLiveData). */
+let scenarioStart = new Date(2026, 10, 12, 8, 0);
 
 export function dayLabel(day: number): string {
-  const d = new Date(SCENARIO_START);
+  const d = new Date(scenarioStart);
   d.setDate(d.getDate() + day);
   return d.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
 }
 
 export function timeLabel(atMin: number): string {
-  const d = new Date(SCENARIO_START.getTime() + atMin * 60_000);
-  const day = Math.floor((d.getTime() - new Date(2026, 10, 12).getTime()) / 86_400_000);
+  const d = new Date(scenarioStart.getTime() + atMin * 60_000);
+  const midnight = new Date(scenarioStart.getFullYear(), scenarioStart.getMonth(), scenarioStart.getDate());
+  const day = Math.floor((d.getTime() - midnight.getTime()) / 86_400_000);
   const time = d.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false });
   return day === 0 ? `Today ${time}` : day === -1 ? `Yesterday ${time}` : `${dayLabel(day)} ${time}`;
 }
@@ -296,7 +298,7 @@ export const SOURCES: Record<string, SourceRecord> = {
   },
 };
 
-export const INGESTION_RUNS = [
+export const INGESTION_RUNS: { id: number; source: string; state: string; started: string; rowsIn: number; rowsOk: number; quarantined: number; error?: string }[] = [
   { id: 87, source: "dpd", state: "succeeded", started: "Nov 11 02:00", rowsIn: 1248, rowsOk: 1240, quarantined: 8 },
   { id: 86, source: "dpd", state: "succeeded", started: "Nov 10 02:00", rowsIn: 1246, rowsOk: 1239, quarantined: 7 },
   { id: 85, source: "hc_shortage_csv", state: "succeeded", started: "Nov 10 01:30", rowsIn: 312, rowsOk: 309, quarantined: 3 },
@@ -319,3 +321,31 @@ export const SOURCE_CATALOG = [
   { name: "Supplier emails", status: "Test set", origin: "Synthetic", note: "Includes hostile cases" },
   { name: "Substitution table", status: "Sample", origin: "Synthetic", note: "Hand-built, every row sourced" },
 ];
+
+/* ---------------------------------------------------------------
+   Live mode: the API (apps/api) sends the same shapes filled with
+   real data. These lookups are shared by every page, so refill them
+   in place rather than threading new data through each component.
+---------------------------------------------------------------- */
+export interface LiveCatalog {
+  scenarioStart: string;
+  sites: Site[];
+  drugs: Drug[];
+  sources: Record<string, SourceRecord>;
+  ingestion: { runs: typeof INGESTION_RUNS; quarantine: typeof QUARANTINE; catalog: typeof SOURCE_CATALOG };
+}
+
+function refill<T>(target: T[], items: T[]) {
+  target.splice(0, target.length, ...items);
+}
+
+export function applyLiveData(live: LiveCatalog) {
+  scenarioStart = new Date(live.scenarioStart);
+  refill(SITES, live.sites);
+  refill(DRUGS, live.drugs);
+  for (const key of Object.keys(SOURCES)) delete SOURCES[key];
+  Object.assign(SOURCES, live.sources);
+  refill(INGESTION_RUNS, live.ingestion.runs);
+  refill(QUARANTINE, live.ingestion.quarantine);
+  refill(SOURCE_CATALOG, live.ingestion.catalog);
+}

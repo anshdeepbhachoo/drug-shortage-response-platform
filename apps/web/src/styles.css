@@ -512,3 +512,13 @@ details.why p { color: var(--ink-2); line-height: 1.65; }
 @media (prefers-reduced-motion: no-preference) {
   .bar-fill, .bar-gain { transition: width 0.35s ease, left 0.35s ease; }
 }
+
+/* ---------- Live data bar (API mode) ---------- */
+.live-controls { display: grid; grid-template-columns: minmax(150px, 0.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; padding: 14px 22px 18px; border-top: 1px solid var(--line); background: var(--surface-2); }
+.live-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.live-field .row { flex-wrap: nowrap; }
+.live-field .input { min-width: 0; flex: 1; }
+.live-status { padding: 0 22px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--surface-2); }
+@media (max-width: 1100px) { .live-controls { grid-template-columns: 1fr; } .live-field .row { flex-wrap: wrap; } }
+.story .track li .link { display: flex; flex-direction: column; gap: 2px; width: 100%; color: inherit; }
+.story .track li .link:hover { text-decoration: none; }

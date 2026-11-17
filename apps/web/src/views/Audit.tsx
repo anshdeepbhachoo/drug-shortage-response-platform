@@ -118,9 +118,12 @@ export function Audit() {
 
 function Trace() {
   const { state } = useStore();
-  const [drugId, setDrugId] = useState("vaso");
-  const [siteId, setSiteId] = useState("B");
-  const line = state.stock.find((l) => l.drugId === drugId && l.siteId === siteId)!;
+  // Start on the first line that has an event (live data has no "vaso" / "B").
+  const start = state.stock.find((l) => state.events.some((e) => e.drugId === l.drugId && e.siteId === l.siteId)) ?? state.stock[0];
+  const [drugId, setDrugId] = useState(state.live ? start?.drugId ?? "" : "vaso");
+  const [siteId, setSiteId] = useState(state.live ? start?.siteId ?? "" : "B");
+  const line = state.stock.find((l) => l.drugId === drugId && l.siteId === siteId) ?? start;
+  if (!line) return null;
   const drug = drugById(drugId);
   const days = lineCoverage(line);
   const usageRef = drugId === "vaso" && siteId === "A" && line.dailyUsage === 10 ? "SITE-RPT-A-77" : line.usageRef;

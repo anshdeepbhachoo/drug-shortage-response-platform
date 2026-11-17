@@ -2,8 +2,8 @@ import { useState } from "react";
 import { DRUGS, SITES, dayLabel, drugById, siteName } from "../data/mock";
 import { AMBER_BELOW, RED_BELOW, lineCoverage, projection, tierFor, withApprovedPlans } from "../lib/risk";
 import { useStore } from "../lib/store";
-import type { StockLine, Tier } from "../lib/types";
-import { Card, ChartGuide, Change, PageHead, ProjectionChart, Sources, Status, TIER_TONE, TierStatus, formatDays } from "../components/ui";
+import type { StockLine, SupplyEvent, Tier } from "../lib/types";
+import { Card, ChartGuide, Change, Empty, PageHead, ProjectionChart, Sources, Status, TIER_TONE, TierStatus, formatDays } from "../components/ui";
 
 const AXIS_MAX = 60;
 const pct = (days: number) => `${(Math.min(days, AXIS_MAX) / AXIS_MAX) * 100}%`;
@@ -11,7 +11,7 @@ const runOutLabel = (days: number) => (days >= AXIS_MAX ? "not within 60 days" :
 
 type Key = { drugId: string; siteId: string };
 
-export function RiskBoard({ go }: { go: (view: string) => void }) {
+export function RiskBoard({ go }: { go: (view: string, focusEvent?: string) => void }) {
   const { state } = useStore();
   const projected = withApprovedPlans(state.stock, state.plans, state.events);
 
@@ -25,13 +25,26 @@ export function RiskBoard({ go }: { go: (view: string) => void }) {
   const red = cells.filter((c) => c.tier === "red").length;
   const amber = cells.filter((c) => c.tier === "amber").length;
   const pending = state.plans.filter((p) => p.status === "pending-approval").length;
-  const openEvents = state.events.filter((e) => e.status === "open").length;
+  // Live: an alert stays on the board until it is closed, including after its plan is approved.
+  const openEvents = state.events.filter((e) => e.status === "open" || (state.live && e.status === "mitigated")).length;
   const broken = state.plans.filter((p) => p.status === "broken");
 
   const [selected, setSelected] = useState<Key | null>(null);
-  const sel = selected ?? (risky[0] ? { drugId: risky[0].line.drugId, siteId: risky[0].line.siteId } : { drugId: "vaso", siteId: "B" });
-  const selCell = cells.find((c) => c.line.drugId === sel.drugId && c.line.siteId === sel.siteId)!;
-  const selProjected = projected.find((l) => l.drugId === sel.drugId && l.siteId === sel.siteId)!;
+
+  if (cells.length === 0) {
+    return (
+      <>
+        <PageHead label="Stock" title="How long will each drug last?" lead="No hospital stock has arrived yet." />
+        <Empty title={`No data for ${dayLabel(0)} yet`}>Run this day at the top: it loads the hospitals' stock, usage and orders first.</Empty>
+      </>
+    );
+  }
+
+  // Default to the most urgent pair, else the first one (live data has no "vaso" / "B").
+  const first = risky[0] ?? cells[0];
+  const sel = selected ?? { drugId: first.line.drugId, siteId: first.line.siteId };
+  const selCell = cells.find((c) => c.line.drugId === sel.drugId && c.line.siteId === sel.siteId) ?? first;
+  const selProjected = projected.find((l) => l.drugId === selCell.line.drugId && l.siteId === selCell.line.siteId) ?? selCell.line;
 
   // Drugs with the lowest cover first, so problems are at the top.
   const drugsByRisk = [...DRUGS].sort((a, b) => {
@@ -73,7 +86,7 @@ export function RiskBoard({ go }: { go: (view: string) => void }) {
       <div className="stats">
         <Stat value={red} label="Critical: under 7 days" tone={red ? "crit" : "good"} />
         <Stat value={amber} label="Watch: under 14 days" tone={amber ? "warn" : "good"} />
-        <Stat value={openEvents} label="Open alerts" tone={openEvents ? "warn" : "good"} onClick={() => go("events")} />
+        <Stat value={openEvents} label={state.live ? "Alerts being handled" : "Open alerts"} tone={openEvents ? "warn" : "good"} onClick={() => go("events")} />
         <Stat value={pending} label="Waiting for approval" tone={pending ? "warn" : "neutral"} onClick={() => go("approvals")} />
       </div>
 
@@ -95,6 +108,7 @@ export function RiskBoard({ go }: { go: (view: string) => void }) {
                     </strong>
                     <div className="small ink-2">
                       Runs out {runOutLabel(c.days)} at {c.line.dailyUsage} {drug.unit} a day.
+                      {state.live && <ProblemNote drugId={c.line.drugId} siteId={c.line.siteId} />}
                       {c.changed && (
                         <>
                           {" "}
@@ -207,7 +221,7 @@ export function RiskBoard({ go }: { go: (view: string) => void }) {
         </Card>
 
         <div id="detail">
-          <CellDetail line={selCell.line} projected={selProjected} />
+          <CellDetail line={selCell.line} projected={selProjected} openPlan={(eventId) => go("plans", eventId)} />
         </div>
       </div>
 
@@ -228,7 +242,7 @@ function Stat({ value, label, tone, onClick }: { value: number; label: string; t
   );
 }
 
-function CellDetail({ line, projected }: { line: StockLine; projected: StockLine }) {
+function CellDetail({ line, projected, openPlan }: { line: StockLine; projected: StockLine; openPlan: (eventId: string) => void }) {
   const drug = drugById(line.drugId);
   const days = lineCoverage(line);
   const after = lineCoverage(projected);
@@ -310,6 +324,7 @@ function CellDetail({ line, projected }: { line: StockLine; projected: StockLine
       <div style={{ marginTop: 14 }}>
         <Sources ids={[line.inventoryRef, usageRef, ...line.orders.map((o) => o.id), drug.dpdRef, ...(drug.criticalList ? ["CDL-2026-V3"] : [])]} />
       </div>
+      <PlanAction line={line} openPlan={openPlan} />
     </Card>
   );
 }
@@ -334,4 +349,54 @@ function StripGuide({ cells }: { cells: { line: StockLine; days: number; tier: s
       }
     />
   );
+}
+
+/** Live data: the supply manager can ask for a plan for this drug now, without waiting for an alert. */
+function PlanAction({ line, openPlan }: { line: StockLine; openPlan: (eventId: string) => void }) {
+  const { state, live } = useStore();
+  if (!state.live) return null;
+  const open = drugAlert(state.events, line.drugId);
+  const canPlan = state.role === "supply";
+  const plan = async () => {
+    const eventId = await live.planDrug(line.drugId, line.siteId);
+    if (eventId) openPlan(eventId);
+  };
+  return (
+    <div className="row-between" style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+      <span className="small ink-2">
+        {open
+          ? open.status === "mitigated"
+            ? "This drug's alert is being handled: its plan was approved."
+            : "This drug already has an open alert and plan."
+          : canPlan
+            ? "Don't wait for an email: plan a response for this drug now."
+            : "Only the supply manager can raise a plan from here."}
+      </span>
+      {open ? (
+        <button className="btn" onClick={() => openPlan(open.id)}>
+          See its plan →
+        </button>
+      ) : (
+        <button className="btn primary" onClick={() => void plan()} disabled={!canPlan || live.busy !== null}>
+          {live.busy === "Planning a response" ? "Planning…" : "Plan a response"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Live: does this drug at this hospital already have a problem being handled? */
+function ProblemNote({ drugId, siteId }: { drugId: string; siteId: string }) {
+  const { state } = useStore();
+  const problem = drugAlert(state.events, drugId);
+  if (!problem) return <b> No problem raised yet.</b>;
+  const sites = problem.sites ?? [];
+  if (sites.length && !sites.includes(siteId)) return <b> This drug has an alert, but its plan does not cover this hospital yet.</b>;
+  return <b> Problem being handled: {(problem.planState ?? "plan in progress").toLowerCase()}.</b>;
+}
+
+/** Live: the drug's one current alert (open, or approved and not yet closed). Open wins. */
+function drugAlert(events: SupplyEvent[], drugId: string): SupplyEvent | undefined {
+  const mine = events.filter((e) => e.drugId === drugId);
+  return mine.find((e) => e.status === "open") ?? mine.find((e) => e.status === "mitigated");
 }

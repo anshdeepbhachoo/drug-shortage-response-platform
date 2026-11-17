@@ -1,25 +1,40 @@
 import { useState } from "react";
 import { PlanCard } from "../components/PlanCard";
 import { Card, Empty, PageHead, Status } from "../components/ui";
-import { USERS, timeLabel } from "../data/mock";
+import { USERS, drugById, siteName, timeLabel } from "../data/mock";
 import { useStore } from "../lib/store";
 import type { Plan } from "../lib/types";
 
 export function Approvals() {
   const { state } = useStore();
-  const pending = state.plans.filter((p) => p.status === "pending-approval");
-  const decisions = state.audit.filter((a) => a.actor === "pharmacist");
+  const isLive = state.live !== null;
+  const [drugFilter, setDrugFilter] = useState("");
+  const [siteFilter, setSiteFilter] = useState("");
+  const allPending = state.plans.filter((p) => p.status === "pending-approval");
+  const pending = allPending.filter(
+    (p) => (!drugFilter || p.drugId === drugFilter) && (!siteFilter || (p.sites ?? []).includes(siteFilter)),
+  );
+  const pendingDrugs = [...new Set(allPending.map((p) => p.drugId))];
+  const pendingSites = [...new Set(allPending.flatMap((p) => p.sites ?? []))].sort();
+  const decisions = isLive
+    ? state.audit.filter((a) => a.action === "Approved" || a.action === "Rejected")
+    : state.audit.filter((a) => a.actor === "pharmacist");
   const isPharmacist = state.role === "pharmacist";
+  const approved = isLive ? state.plans.filter((p) => p.status === "approved") : [];
 
   return (
     <>
       <PageHead
         label="Approvals"
         title={pending.length ? `${pending.length} plan${pending.length > 1 ? "s" : ""} waiting for a decision` : "Nothing waiting for a decision"}
-        lead="Only the pharmacist at the receiving hospital can approve a plan. Approving records the decision and writes the messages, but sends nothing."
+        lead={
+          isLive
+            ? "Pick one option. The server checks your role (transfers: supply or pharmacy manager; substitutions: pharmacist) and re-checks stock before recording the decision. Nothing is sent."
+            : "Only the pharmacist at the receiving hospital can approve a plan. Approving records the decision and writes the messages, but sends nothing."
+        }
       />
 
-      {!isPharmacist && (
+      {!isLive && !isPharmacist && (
         <div className="callout info">
           <span className="ico" aria-hidden>
             i
@@ -31,6 +46,38 @@ export function Approvals() {
         </div>
       )}
 
+      {isLive && allPending.length > 0 && (
+        <div className="row" style={{ gap: 16 }}>
+          <label className="row" style={{ gap: 8 }}>
+            <span className="label">Drug</span>
+            <select className="input" value={drugFilter} onChange={(e) => setDrugFilter(e.target.value)} aria-label="Filter approvals by drug">
+              <option value="">All drugs ({pendingDrugs.length})</option>
+              {pendingDrugs.map((id) => (
+                <option key={id} value={id}>
+                  {drugById(id)?.name ?? id}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="row" style={{ gap: 8 }}>
+            <span className="label">Hospital</span>
+            <select className="input" value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)} aria-label="Filter approvals by hospital">
+              <option value="">All hospitals</option>
+              {pendingSites.map((id) => (
+                <option key={id} value={id}>
+                  {siteName(id)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(drugFilter || siteFilter) && (
+            <span className="small muted">
+              Showing {pending.length} of {allPending.length}
+            </span>
+          )}
+        </div>
+      )}
+
       {pending.length === 0 ? (
         <Empty title="All caught up">New plans arrive here when a hospital is at risk.</Empty>
       ) : (
@@ -39,6 +86,20 @@ export function Approvals() {
             <PlanCard key={p.id} plan={p} recommended actions={<Decide plan={p} />} />
           ))}
         </div>
+      )}
+
+      {approved.length > 0 && (
+        <section>
+          <div className="section-head">
+            <h2>Approved plans</h2>
+            <span className="meta">the option a person chose, in full</span>
+          </div>
+          <div className="stack" style={{ gap: 16 }}>
+            {approved.map((p) => (
+              <PlanCard key={p.id} plan={p} actions={<ApprovedBy plan={p} />} />
+            ))}
+          </div>
+        </section>
       )}
 
       <Card label="On the record" title="Past decisions">
@@ -65,10 +126,28 @@ export function Approvals() {
   );
 }
 
+function ApprovedBy({ plan }: { plan: Plan }) {
+  const { state } = useStore();
+  const record = state.audit.find((a) => a.action === "Approved" && a.refs.includes(plan.solverRun));
+  const note = record?.detail.split('Note: "')[1]?.replace(/"$/, "");
+  return (
+    <span className="small ink-2" style={{ flex: 1 }}>
+      <Status tone="good">Approved</Status>
+      {record && (
+        <>
+          {" "}by <b>{record.actorName}</b> · {timeLabel(record.atMin)}
+          {note && <> · “{note}”</>}
+        </>
+      )}
+    </span>
+  );
+}
+
 function Decide({ plan }: { plan: Plan }) {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, live } = useStore();
   const [note, setNote] = useState("");
-  const allowed = state.role === "pharmacist";
+  // Live: anyone who can hold an approval role may try; the server enforces the rules.
+  const allowed = state.live ? state.role !== "auditor" && live.busy === null : state.role === "pharmacist";
   return (
     <>
       <input
@@ -84,7 +163,7 @@ function Decide({ plan }: { plan: Plan }) {
         Reject
       </button>
       <button className="btn primary" disabled={!allowed} onClick={() => dispatch({ type: "approve", planId: plan.id, note })}>
-        Approve plan
+        {state.live ? `Approve option ${plan.rank}` : "Approve plan"}
       </button>
     </>
   );

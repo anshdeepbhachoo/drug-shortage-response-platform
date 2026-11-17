@@ -16,6 +16,7 @@ stored as pending_approval (or proposed when no option passed the checks).
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 import uuid
 
 from sqlalchemy import text
@@ -56,6 +57,21 @@ def _actions(plan_id: str, result: dict) -> list[dict]:
     return rows
 
 
+def open_event_for(engine: Engine, source_ref: str) -> str | None:
+    """The supply event still open (or monitoring) for this source, if any.
+
+    Used to avoid planning the same notice twice while it is being handled.
+    Once its event is mitigated or closed, the same source may be processed again.
+    """
+
+    with engine.connect() as conn:
+        return conn.execute(text("""
+            SELECT event_id FROM supply_event
+            WHERE source_ref = :ref AND status IN ('open', 'monitoring')
+            ORDER BY created_at DESC LIMIT 1
+        """), {"ref": source_ref}).scalar_one_or_none()
+
+
 def save_pipeline_result(
     engine: Engine,
     result: dict,
@@ -63,20 +79,44 @@ def save_pipeline_result(
     actor: str = "signal-agent",
     source_type: str = "supplier_email",
     kind: str = "delay",
+    site_id: str | None = None,
+    event_id: str | None = None,
 ) -> dict:
     """Store one process_email() / process_event() result. Returns the IDs that were written.
 
     source_type and kind describe the signal: a supplier email reporting a
     delay (default), or a Health Canada shortage report (shortage_report /
     shortage).
+
+    event_id: an existing alert for the same drug ("one living alert per drug").
+    The new signal is added to its evidence and the new plan replaces the alert's
+    earlier plans that are still waiting (they are marked superseded, never
+    deleted). Approved plans are left alone.
     """
 
     status = result["status"]
     assessment = result.get("assessment") or {}
     saved = {"event_id": None, "plan_id": None, "action_ids": []}
+    evidence = {"source": source_type, "ref": source_ref,
+                "summary": assessment.get("reason") or (result.get("reason") if isinstance(result.get("reason"), str) else ""),
+                "at": datetime.now(timezone.utc).isoformat()}
 
     with engine.begin() as conn:
-        if status in ASSESSED and assessment.get("drug_din"):
+        if event_id and status in ASSESSED:
+            saved["event_id"] = event_id
+            conn.execute(text("""
+                UPDATE supply_event
+                SET detail = jsonb_set(COALESCE(detail, '{}'::jsonb), '{evidence}',
+                                       COALESCE(detail->'evidence', '[]'::jsonb) || CAST(:item AS jsonb)),
+                    status = CASE WHEN :at_risk THEN 'open' ELSE status END
+                WHERE event_id = :event_id
+            """), {"event_id": event_id, "item": json.dumps([evidence]), "at_risk": bool(result.get("risk_sites"))})
+            if status in PLANNED:
+                conn.execute(text("""
+                    UPDATE plan SET status = 'superseded'
+                    WHERE event_id = :event_id AND status IN ('pending_approval', 'proposed', 'broken')
+                """), {"event_id": event_id})
+        elif status in ASSESSED and assessment.get("drug_din"):
             risk_sites = result.get("risk_sites") or []
             saved["event_id"] = _new_id("SE")
             conn.execute(
@@ -92,14 +132,14 @@ def save_pipeline_result(
                     "event_id": saved["event_id"],
                     "din": assessment["drug_din"],
                     # One affected site is recorded on the event; several stay in the plan.
-                    "site_id": risk_sites[0] if len(risk_sites) == 1 else None,
+                    "site_id": site_id or (risk_sites[0] if len(risk_sites) == 1 else None),
                     "source_ref": source_ref,
                     "kind": kind,
                     "source_type": source_type,
                     "delay_days": result.get("delay_days"),
                     "confidence": assessment["confidence"],
                     "status": "open" if risk_sites else "monitoring",
-                    "detail": json.dumps(assessment),
+                    "detail": json.dumps({**assessment, "evidence": [evidence]}),
                 },
             )
 

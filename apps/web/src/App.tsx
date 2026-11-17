@@ -3,6 +3,7 @@ import { PAGE_TIPS, SHELL_TIPS, Tour } from "./components/Tour";
 import { SourceProvider } from "./components/ui";
 import { Welcome } from "./components/Welcome";
 import { USERS, timeLabel } from "./data/mock";
+import { LiveBar } from "./components/LiveBar";
 import { STEPS, useStore } from "./lib/store";
 import type { Role } from "./lib/types";
 import { Approvals } from "./views/Approvals";
@@ -85,7 +86,7 @@ function useTheme() {
 }
 
 export function App() {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, live } = useStore();
   const [theme, toggleTheme] = useTheme();
   const [storyOpen, setStoryOpen] = useState(() => {
     try {
@@ -144,6 +145,8 @@ export function App() {
     drafts: state.drafts.filter((d) => d.status === "draft").length,
   };
 
+  // The alert whose plan was opened from the Alerts page (null: show the newest plan).
+  const [focusEvent, setFocusEvent] = useState<string | null>(null);
   const go = (v: ViewId) => {
     setTouring(false);
     setView(v);
@@ -186,8 +189,11 @@ export function App() {
           </div>
           <nav className="tabs" aria-label="Pages">
             {visibleNav.map((n) => (
-              <button key={n.id} className={n.id === activeView ? "active" : ""} onClick={() => go(n.id)} aria-current={n.id === activeView ? "page" : undefined}>
-                {n.label}
+              <button key={n.id} className={n.id === activeView ? "active" : ""} onClick={() => {
+                  setFocusEvent(null);
+                  go(n.id);
+                }} aria-current={n.id === activeView ? "page" : undefined}>
+                {n.id === "events" && live.mode === "live" ? "Problems" : n.label}
                 {!!counts[n.id] && <span className="count">{counts[n.id]}</span>}
               </button>
             ))}
@@ -224,50 +230,68 @@ export function App() {
       </aside>
 
       <main className="page">
-        <section className="story" aria-label="Demo story">
-          <div className="story-top">
-            <div>
-              <div className="story-tag">
-                <span className="badge-accent">
-                  Step {state.step + 1} of {STEPS.length}
-                </span>
-                <span className="meta">{timeLabel(state.clockMin)} · simulated clock</span>
+        {live.mode === "live" ? (
+          <LiveBar />
+        ) : (
+          <section className="story" aria-label="Demo story">
+            <div className="story-top">
+              <div>
+                <div className="story-tag">
+                  <span className="badge-accent">
+                    Step {state.step + 1} of {STEPS.length}
+                  </span>
+                  <span className="meta">{timeLabel(state.clockMin)} · simulated clock</span>
+                </div>
+                <h2>{story.headline}</h2>
+                {storyOpen && (
+                  <>
+                    <p>{story.why}</p>
+                    <p className="story-look">
+                      <b>Look at:</b> {story.look}
+                    </p>
+                  </>
+                )}
+                <button className="link small story-toggle" onClick={toggleStory} aria-expanded={storyOpen}>
+                  {storyOpen ? "Hide details" : "Why this matters"}
+                </button>
               </div>
-              <h2>{story.headline}</h2>
-              {storyOpen && (
-                <>
-                  <p>{story.why}</p>
-                  <p className="story-look">
-                    <b>Look at:</b> {story.look}
-                  </p>
-                </>
-              )}
-              <button className="link small story-toggle" onClick={toggleStory} aria-expanded={storyOpen}>
-                {storyOpen ? "Hide details" : "Why this matters"}
-              </button>
+              <div className="story-actions">
+                <button className="btn" onClick={reset}>
+                  Start over
+                </button>
+                <button className="btn primary" onClick={next} disabled={atEnd}>
+                  {atEnd ? "Story complete" : `Next: ${STEPS[state.step + 1].title} →`}
+                </button>
+              </div>
             </div>
-            <div className="story-actions">
-              <button className="btn" onClick={reset}>
-                Start over
-              </button>
-              <button className="btn primary" onClick={next} disabled={atEnd}>
-                {atEnd ? "Story complete" : `Next: ${STEPS[state.step + 1].title} →`}
-              </button>
-            </div>
-          </div>
-          <ol className="track">
-            {STEPS.map((s, i) => (
-              <li key={s.title} className={i < state.step ? "done" : i === state.step ? "current" : ""}>
-                <span className="label">{String(i + 1).padStart(2, "0")}</span>
-                <span className="t">{s.title}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
+            <ol className="track">
+              {STEPS.map((s, i) => (
+                <li key={s.title} className={i < state.step ? "done" : i === state.step ? "current" : ""}>
+                  <span className="label">{String(i + 1).padStart(2, "0")}</span>
+                  <span className="t">{s.title}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
 
-        {activeView === "board" && <RiskBoard go={(v) => go(v as ViewId)} />}
-        {activeView === "events" && <Events />}
-        {activeView === "plans" && <Plans />}
+        {activeView === "board" && (
+          <RiskBoard
+            go={(v, eventId) => {
+              setFocusEvent(eventId ?? null);
+              go(v as ViewId);
+            }}
+          />
+        )}
+        {activeView === "events" && (
+          <Events
+            openPlan={(eventId) => {
+              setFocusEvent(eventId);
+              go("plans");
+            }}
+          />
+        )}
+        {activeView === "plans" && <Plans focusEvent={focusEvent} />}
         {activeView === "approvals" && <Approvals />}
         {activeView === "drafts" && <Drafts />}
         {activeView === "audit" && <Audit />}
@@ -276,7 +300,11 @@ export function App() {
         {touring && <Tour key={activeView} steps={tourSteps} onClose={endTour} />}
         {welcoming && <Welcome role={state.role} onDone={endWelcome} />}
 
-        <p className="foot-note">Prototype. Stock, usage, orders, emails and people are simulated.</p>
+        <p className="foot-note">
+          {live.mode === "live"
+            ? "Live data from the platform database. Hospital stock, emails and people are synthetic; Health Canada data is real."
+            : "Prototype. Stock, usage, orders, emails and people are simulated."}
+        </p>
       </main>
       </div>
     </SourceProvider>

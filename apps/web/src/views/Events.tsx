@@ -16,7 +16,15 @@ const SOURCE_WORDS: Record<SupplyEvent["source"], string> = {
   "site-report": "Hospital report",
 };
 
-export function Events() {
+const EVIDENCE_WORDS: Record<string, string> = {
+  stock_watch: "Stock watch",
+  supplier_email: "Supplier email",
+  shortage_report: "Health Canada report",
+  manual: "Supply manager",
+  site_report: "Hospital report",
+};
+
+export function Events({ openPlan }: { openPlan?: (eventId: string) => void } = {}) {
   const { state } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const email = state.emails.find((e) => e.id === selectedId) ?? state.emails[0];
@@ -26,7 +34,7 @@ export function Events() {
     <>
       <PageHead
         label="Alerts"
-        title="What came in, and what the AI made of it"
+        title={state.live ? "Problems, and what raised them" : "What came in, and what the AI made of it"}
         lead={`An AI reads every supplier email and pulls out the facts: which drug, which order, and the new date. It can't change anything itself. ${blocked ? `${blocked} suspicious email${blocked > 1 ? "s were" : " was"} blocked and sent to a person.` : ""}`}
       />
 
@@ -156,20 +164,39 @@ export function Events() {
             </div>
           </section>
 
-          <Card label="Alerts" title="What the platform is tracking">
+          <Card label={state.live ? "Problems" : "Alerts"} title={state.live ? "What the platform is dealing with" : "What the platform is tracking"}>
             <div className="stack" style={{ gap: 14 }}>
               {state.events.map((e) => (
                 <div key={e.id} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <div className="row-between">
                     <strong>{e.title}</strong>
-                    <Status tone={EVENT_STATUS[e.status].tone}>{EVENT_STATUS[e.status].text}</Status>
+                    {state.live && e.planState ? (
+                      <Status tone={e.planState.includes("approved") ? "good" : e.planState.includes("waiting") ? "warn" : "crit"}>{e.planState}</Status>
+                    ) : (
+                      <Status tone={EVENT_STATUS[e.status].tone}>{EVENT_STATUS[e.status].text}</Status>
+                    )}
                   </div>
-                  <span className="small ink-2">{e.summary}</span>
+                  {state.live && e.evidence?.length ? (
+                    <ul className="small ink-2" style={{ margin: 0, paddingLeft: 18 }}>
+                      {e.evidence.map((ev, i) => (
+                        <li key={i}>
+                          <b>{EVIDENCE_WORDS[ev.source] ?? ev.source}:</b> {ev.summary || ev.ref}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span className="small ink-2">{e.summary}</span>
+                  )}
                   <span className="meta">
                     {SOURCE_WORDS[e.source]} · {timeLabel(e.atMin)}
                     {e.confidence < 1 && ` · ${Math.round(e.confidence * 100)}% sure`}
                   </span>
                   <Sources ids={[e.id, e.sourceRef]} label="Records" />
+                  {openPlan && state.plans.some((p) => p.eventId === e.id) && (
+                    <button className="link small" style={{ alignSelf: "flex-start" }} onClick={() => openPlan(e.id)}>
+                      See its plan →
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

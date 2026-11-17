@@ -16,6 +16,7 @@ Usage:
   python -m ingestion.workflow nightly --only dpd           # re-run one task ("repair run")
   python -m ingestion.workflow nightly --batch-size 25 --max-batches 0 --shortage-max-pages 5
   python -m ingestion.workflow followup                     # check approved transfers (rules only)
+  python -m ingestion.workflow day --date 2026-11-16       # the whole platform for one day (cron: daily)
 
 Scheduling is left to the host, e.g. cron at 02:00:
   0 2 * * * cd /path/to/repo && .venv/bin/python -m ingestion.workflow nightly
@@ -222,7 +223,27 @@ def followup_tasks(data=None, now=None) -> list[Task]:
     return [Task("followup", followup, retries=1, retry_delay=60)]
 
 
-WORKFLOWS: dict[str, Callable[[], list[Task]]] = {"nightly": nightly_tasks, "followup": followup_tasks}
+def day_tasks(day=None, llm=None) -> list[Task]:
+    """The whole platform for one day (services/agents/daily_run.py). Default day: today (UTC)."""
+
+    def run(engine: Engine, params: Params) -> dict:
+        import os
+        from datetime import datetime, timezone
+
+        from sqlalchemy import create_engine
+
+        from services.agents.daily_run import run_day
+
+        read = create_engine(os.environ["DATABASE_URL_READONLY"]) if os.getenv("DATABASE_URL_READONLY") else engine
+        when = day or params.get("day") or datetime.now(timezone.utc).date()
+        summary = run_day(engine, read, when, llm=llm, planner=params.get("planner", "auto"))
+        return {"day": summary["day"], "emails": len(summary["emails"]),
+                "alerts": len(summary["stock_watch"]["alerts"]), "followup": len(summary["followup"])}
+
+    return [Task("day", run, retries=0)]
+
+
+WORKFLOWS: dict[str, Callable[[], list[Task]]] = {"nightly": nightly_tasks, "followup": followup_tasks, "day": day_tasks}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -236,6 +257,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stale-days", type=int, default=7, help="Re-fetch DPD data older than this")
     parser.add_argument("--shortage-max-pages", type=int, default=None, help="Stop the shortage pull after N pages")
     parser.add_argument("--signal-limit", type=int, default=20, help="Shortage reports to plan per run")
+    parser.add_argument("--date", type=lambda v: __import__("datetime").date.fromisoformat(v),
+                        help="For the 'day' workflow: the day to run (default: today)")
+    parser.add_argument("--planner", choices=["auto", "model", "rules"], default="auto", help="For the 'day' workflow")
     args = parser.parse_args(argv)
 
     tasks = WORKFLOWS[args.workflow]()
@@ -253,6 +277,8 @@ def main(argv: list[str] | None = None) -> int:
         "stale_days": args.stale_days,
         "shortage_max_pages": args.shortage_max_pages,
         "signal_limit": args.signal_limit,
+        "day": args.date,
+        "planner": args.planner,
     }
     try:
         results = run_workflow(args.workflow, tasks, get_engine(), params, set(args.only) if args.only else None)

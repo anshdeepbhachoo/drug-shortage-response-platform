@@ -2,11 +2,15 @@ import math
 from datetime import date
 
 
-def cover_days_by_site(stock_rows, orders, delay_days, today):
+def cover_days_by_site(stock_rows, orders, delay_days, today, restore=False):
     """
     Days each site must last: days until its earliest open order was due
     (never negative), plus the supplier delay. Sites with no open order
     fall back to the delay alone.
+
+    restore=True is for alerts with no supplier delay (stock watch, a person
+    asking): each site must last delay_days, or until its next delivery if
+    that comes later. Nothing is added on top of the delivery date.
     """
 
     earliest_due = {}
@@ -27,7 +31,7 @@ def cover_days_by_site(stock_rows, orders, delay_days, today):
         if site_id in earliest_due:
             days_to_due = max(0, (earliest_due[site_id] - today).days)
 
-        cover[site_id] = days_to_due + delay_days
+        cover[site_id] = max(days_to_due, delay_days) if restore else days_to_due + delay_days
 
     return cover
 

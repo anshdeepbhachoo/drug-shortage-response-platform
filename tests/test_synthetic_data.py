@@ -246,3 +246,14 @@ def test_baseline_fixture_still_three_sites_only():
     at_risk, shortfall = calculate_site_risk(stock, cover)
     assert at_risk == ["A"]
     assert shortfall == {"A": 180}
+
+
+def test_restore_cover_waits_for_the_delivery_but_adds_no_delay():
+    stock = [{"site_id": "A", "on_hand": 20, "daily_use": 10.0}, {"site_id": "B", "on_hand": 90, "daily_use": 4.0}]
+    orders = [{"site_id": "A", "expected_date": "2026-12-05"}, {"site_id": "B", "expected_date": "2026-11-18"}]
+
+    delayed = cover_days_by_site(stock, orders, delay_days=14, today=TODAY)
+    restored = cover_days_by_site(stock, orders, delay_days=14, today=TODAY, restore=True)
+
+    assert delayed == {"A": 34, "B": 17}            # a supplier delay pushes every delivery back
+    assert restored == {"A": 20, "B": 14}           # restore: until the next delivery, at least 14 days
