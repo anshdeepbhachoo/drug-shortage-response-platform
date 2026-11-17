@@ -649,6 +649,18 @@ def main():
     )
 
     parser.add_argument(
+        "--db",
+        action="store_true",
+        help="Read stock, orders and drugs from Postgres (DATABASE_URL_READONLY) instead of mock/ CSVs",
+    )
+
+    parser.add_argument(
+        "--as-of",
+        type=date.fromisoformat,
+        help="With --db: use the stock snapshot from this day (YYYY-MM-DD), e.g. a progression day",
+    )
+
+    parser.add_argument(
         "--save",
         action="store_true",
         help="Write the result to supply_event / plan / plan_action / audit_log (DATABASE_URL)",
@@ -667,7 +679,13 @@ def main():
 
     email = email_path.read_text(encoding="utf-8")
 
-    result = process_email(email)
+    data = None
+    if args.db:
+        from services.agents.db_data import PostgresData
+
+        data = PostgresData.from_env(as_of=args.as_of)
+
+    result = process_email(email, data=data, today=args.as_of)
 
     if args.save:
         from ingestion.lineage import get_engine

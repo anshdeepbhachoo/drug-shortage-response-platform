@@ -21,6 +21,7 @@ from alembic.config import Config  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.exc import DBAPIError  # noqa: E402
 
+from ingestion.synthetic_loader import load_folder  # noqa: E402
 from services.agents.agent import process_email  # noqa: E402
 from services.agents.data import CsvData  # noqa: E402
 from services.agents.results_store import save_pipeline_result  # noqa: E402
@@ -28,6 +29,8 @@ from tests.test_agent import FakeModel, assessment, transfer  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = ROOT / "mock"
+# Rayyan's frozen 3-site data: the exact numbers these tests assert (A short by 180).
+BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
 URL = os.environ.get("TEST_DATABASE_URL")
 
 pytestmark = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
@@ -43,6 +46,8 @@ def engine(monkeypatch):
     command.downgrade(config, "base")
     command.upgrade(config, "head")
     engine = create_engine(URL)
+    # Events and plan actions must name sites and drugs that exist.
+    load_folder(engine, BASELINE)
     yield engine
     engine.dispose()
 
@@ -55,7 +60,7 @@ def count(engine, table, where="TRUE"):
 def pipeline_result(email="clear.txt", plans=None):
     model = FakeModel(assessments=[assessment()], plans=plans or [transfer("B", 180)])
     email_text = (MOCK / "emails" / email).read_text()
-    return process_email(email_text, data=CsvData(MOCK), llm=model, today=date(2026, 11, 15))
+    return process_email(email_text, data=CsvData(BASELINE), llm=model, today=date(2026, 11, 15))
 
 
 # ---------------------------------------------------------
@@ -90,7 +95,7 @@ def test_unverified_plan_is_stored_as_proposed_with_problems(engine):
 
 
 def test_rejected_email_only_writes_audit(engine):
-    result = process_email((MOCK / "emails" / "hostile.txt").read_text(), data=CsvData(MOCK), llm=FakeModel())
+    result = process_email((MOCK / "emails" / "hostile.txt").read_text(), data=CsvData(BASELINE), llm=FakeModel())
 
     saved = save_pipeline_result(engine, result, source_ref="mock/emails/hostile.txt")
 
@@ -112,6 +117,9 @@ def test_audit_log_cannot_be_changed_or_truncated(engine):
     "INSERT INTO supply_event (event_id, din, kind, source_type, source_ref, confidence) VALUES ('E', '123', 'delay', 'supplier_email', 't', 0.9)",
     "INSERT INTO supply_event (event_id, din, kind, source_type, source_ref, confidence) VALUES ('E', '99000001', 'delay', 'supplier_email', 't', 1.5)",
     "INSERT INTO plan (plan_id, event_id, source) VALUES ('P', 'missing', 'rules')",
+    # Foreign keys from the operational tables:
+    "INSERT INTO supply_event (event_id, din, kind, source_type, source_ref, confidence) VALUES ('E', '12345678', 'delay', 'supplier_email', 't', 0.9)",
+    "INSERT INTO supply_event (event_id, din, site_id, kind, source_type, source_ref, confidence) VALUES ('E', '99000001', 'Z', 'delay', 'supplier_email', 't', 0.9)",
 ])
 def test_bad_platform_rows_are_rejected(engine, sql):
     with pytest.raises(DBAPIError):
