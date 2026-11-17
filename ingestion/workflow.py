@@ -15,6 +15,7 @@ Usage:
   python -m ingestion.workflow nightly --dry-run            # show the plan, run nothing
   python -m ingestion.workflow nightly --only dpd           # re-run one task ("repair run")
   python -m ingestion.workflow nightly --batch-size 25 --max-batches 0 --shortage-max-pages 5
+  python -m ingestion.workflow followup                     # check approved transfers (rules only)
 
 Scheduling is left to the host, e.g. cron at 02:00:
   0 2 * * * cd /path/to/repo && .venv/bin/python -m ingestion.workflow nightly
@@ -202,7 +203,26 @@ def nightly_tasks(shortage_client=None, dpd_client=None, llm=None, data=None) ->
     ]
 
 
-WORKFLOWS: dict[str, Callable[[], list[Task]]] = {"nightly": nightly_tasks}
+def followup_tasks(data=None, now=None) -> list[Task]:
+    """Check approved transfers (services/agents/followup_db.py). Rules only, no model:
+    run `python -m services.agents.followup_db --live` to use Bedrock."""
+
+    def followup(engine: Engine, params: Params) -> dict:
+        import os
+        from collections import Counter
+        from datetime import datetime, timezone
+
+        from services.agents.db_data import PostgresData
+        from services.agents.followup_db import run_followup
+
+        source = data or (PostgresData.from_env() if os.getenv("DATABASE_URL_READONLY") else PostgresData(engine))
+        actions = run_followup(engine, source, now or datetime.now(timezone.utc))
+        return {"checked": len(actions), **Counter(action.decision for action in actions)}
+
+    return [Task("followup", followup, retries=1, retry_delay=60)]
+
+
+WORKFLOWS: dict[str, Callable[[], list[Task]]] = {"nightly": nightly_tasks, "followup": followup_tasks}
 
 
 def main(argv: list[str] | None = None) -> int:

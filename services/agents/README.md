@@ -112,6 +112,8 @@ Tests: `tests/test_agent.py` (signal → plan, fake model) and `tests/test_follo
 - On the database the agents get two extra read-only tools: `get_shortage_reports` (Health Canada shortage status) and `get_drug_product` (DPD record: brand, company, status, ingredients). In CSV mode the tool lists are unchanged.
 - `shortage_signals.py`: an active shortage report for a tracked drug becomes a supply event (code, no model), then goes through `agent.process_event()` (risk, planning agent, transfer checks) and is saved with `results_store`. Each report is planned once; if planning fails it stays pending. Runs as the `signals` step of `python -m ingestion.workflow nightly`, and is skipped if no model is configured.
 - CLI: `python -m services.agents.agent <email> --db --as-of 2026-11-18 --save`.
+- Approvals: `python -m services.agents.approvals list | approve | reject` (`approvals.py`). Role rules and a re-check against current stock are enforced in code; one decision per plan.
+- Follow-up on the database: `python -m services.agents.followup_db --now 2026-11-16T18:00 --as-of 2026-11-15` (`followup_db.py`). Watches the transfers of approved options, runs `FollowUpAgent` unchanged, writes each check to `audit_log` and rebuilds its state from there on the next run. Scheduled form: `python -m ingestion.workflow followup`.
 
 ## Known issues
 
