@@ -5,7 +5,7 @@ import { drugById, siteName } from "../data/mock";
 import { lineCoverage, tierFor } from "../lib/risk";
 import { useStore } from "../lib/store";
 
-type Go = (view: "board" | "events" | "approvals" | "audit") => void;
+type Go = (view: "hospitals" | "board" | "events" | "approvals" | "audit") => void;
 
 /** Live home: a dashboard of tiles, each a summary that opens the page behind it. */
 export function Home({ go }: { go: Go }) {
@@ -14,6 +14,7 @@ export function Home({ go }: { go: Go }) {
       <PageHead label="Home" title="Today across the network" lead="Each tile sums up one part of the platform. Click a tile to open it." />
       <LiveBar />
       <div className="tiles">
+        <HospitalsTile go={go} />
         <StockTile go={go} />
         <ProblemsTile go={go} />
         <ApprovalsTile go={go} />
@@ -59,6 +60,29 @@ function Rows({ rows, empty }: { rows: { key: string; text: ReactNode; right?: R
         </li>
       ))}
     </ul>
+  );
+}
+
+function HospitalsTile({ go }: { go: Go }) {
+  const { state } = useStore();
+  const sites = [...new Set(state.stock.map((l) => l.siteId))].map((siteId) => {
+    const lines = state.stock.filter((l) => l.siteId === siteId).map((l) => ({ line: l, days: lineCoverage(l) }));
+    const worst = lines.reduce((a, b) => (b.days < a.days ? b : a), lines[0]);
+    return { siteId, worst, tier: tierFor(worst.days, worst.line.safetyDays) };
+  }).sort((a, b) => a.worst.days - b.worst.days);
+  const red = sites.filter((s) => s.tier === "red").length;
+  const amber = sites.filter((s) => s.tier === "amber").length;
+  return (
+    <Tile title="Hospitals" value={red} tone={red ? "crit" : "good"} sub={`with a drug under 7 days · ${amber} more under 14`} onOpen={() => go("hospitals")}>
+      <Rows
+        empty="No hospital stock yet."
+        rows={sites.slice(0, 3).map((s) => ({
+          key: s.siteId,
+          text: <b>{siteName(s.siteId)}</b>,
+          right: `${drugById(s.worst.line.drugId)?.name.split(" ")[0]} ${formatDays(s.worst.days)} d`,
+        }))}
+      />
+    </Tile>
   );
 }
 

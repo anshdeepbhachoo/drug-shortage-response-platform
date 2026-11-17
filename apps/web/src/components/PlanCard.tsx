@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { SITES, dayLabel, drugById, siteName } from "../data/mock";
+import { SITES, dayLabel, drugById, siteName, siteTag } from "../data/mock";
 import { AMBER_BELOW, applyPlan, coverageDays, evaluatePlan, tierFor } from "../lib/risk";
 import { useStore } from "../lib/store";
 import type { Plan, PlanStatus } from "../lib/types";
@@ -179,9 +179,9 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
                 const receiving = s.id === event.siteId;
                 const needed = receiving && event.resupplyDay ? event.resupplyDay - 1 : undefined;
                 return (
-                  <div key={s.id} className="bar-row" style={{ cursor: "default", padding: "6px 4px" }} title={`${s.short}: ${formatDays(days)} days after this plan`}>
+                  <div key={s.id} className="bar-row" style={{ cursor: "default", padding: "6px 4px" }} title={`${s.name}: ${formatDays(days)} days after this plan`}>
                     <span className="site">
-                      {s.short}
+                      {siteTag(s.id)}
                       {receiving && <span className="muted"> · gets stock</span>}
                     </span>
                     <div className="bar-track">

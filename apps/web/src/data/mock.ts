@@ -32,6 +32,8 @@ export const SITES: Site[] = [
 ];
 
 export const siteName = (id: string) => SITES.find((s) => s.id === id)?.short ?? id;
+/** A one-word label for tight spots (column headers, bar labels): "Central General" → "Central". */
+export const siteTag = (id: string) => (siteName(id).split(" ")[0] || id);
 
 export const DRUGS: Drug[] = [
   { id: "vaso", name: "Vasopressin", form: "20 units/mL, 1 mL vial", unit: "vials", criticalList: true, dpdRef: "SNAP-4410" },
