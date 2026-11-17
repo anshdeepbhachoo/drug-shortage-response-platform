@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { dayLabel } from "../data/mock";
 import { api, type DaySummary, type FollowUp, type Planner } from "../lib/api";
 import { useStore } from "../lib/store";
+import { Origin } from "./ui";
 
 const PLANNERS: { id: Planner; label: string }[] = [
   { id: "auto", label: "Auto (AI if available)" },
@@ -193,21 +194,23 @@ function DayReport({ summary }: { summary: DaySummary }) {
         </strong>
         <ul>
           <li>
-            Supplier notices:{" "}
+            <Origin by="agent" compact /> Supplier notices:{" "}
             {summary.emails.length
               ? summary.emails.map((e) => `${e.email} → ${e.status.replace(/_/g, " ")}`).join("; ")
               : "none"}
           </li>
           <li>
-            Stock watch:{" "}
+            <Origin by="rules" compact /> Stock watch:{" "}
             {watch.alerts.length
               ? watch.alerts.map((a) => `${a.drug} at ${a.sites.join(", ")} (${a.kind.replace("_", " ")}) → ${a.status.replace(/_/g, " ")}`).join("; ")
               : "no new alerts"}
             {watch.waiting > 0 && `; ${watch.waiting} deferred to next run`}
           </li>
-          <li>Health Canada reports: {summary.shortage_reports.reports ? `${summary.shortage_reports.reports} planned` : "no new reports for tracked drugs"}</li>
           <li>
-            Follow-up:{" "}
+            <Origin by="rules" compact /> Health Canada reports: {summary.shortage_reports.reports ? `${summary.shortage_reports.reports} planned` : "no new reports for tracked drugs"}
+          </li>
+          <li>
+            <Origin by="agent" compact /> Follow-up:{" "}
             {summary.followup.length
               ? summary.followup.map((f) => (byId.has(f.transfer) ? followupLine(byId.get(f.transfer)!, f.decision) : `${f.transfer}: ${f.decision}`)).join("; ")
               : "no approved transfers"}

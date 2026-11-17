@@ -33,6 +33,7 @@ export interface FollowUp {
   confirmed?: number | null;
   hoursOverdue?: number | null;
   checkedAt?: string | null;
+  decidedBy?: "agent" | "rule" | "fallback" | null;
   reason: string;
 }
 

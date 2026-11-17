@@ -826,3 +826,34 @@ details.sources summary::before, details.why summary::after { font-family: var(-
 .role-chip.in { background: var(--good-wash); color: var(--good-text); }
 .role-chip.out { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
 .overdue { margin-left: 4px; font-size: 12px; font-weight: 600; padding: 1px 6px; border-radius: 2px; background: var(--crit-wash); color: var(--crit-text); }
+
+/* ---------- Provenance marks: agent / rules / human ---------- */
+:root {
+  --origin-agent: #6b3fa0; --origin-agent-wash: #f1ebf8;
+  --origin-rules: #484644; --origin-rules-wash: #f0efee;
+  --origin-human: #0b6a5d; --origin-human-wash: #e3f3f0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    --origin-agent: #c8a8f0; --origin-agent-wash: #2e2340;
+    --origin-rules: #c8c6c4; --origin-rules-wash: #2d2c2b;
+    --origin-human: #6fd6c4; --origin-human-wash: #13332e;
+  }
+}
+:root[data-theme="dark"] {
+  --origin-agent: #c8a8f0; --origin-agent-wash: #2e2340;
+  --origin-rules: #c8c6c4; --origin-rules-wash: #2d2c2b;
+  --origin-human: #6fd6c4; --origin-human-wash: #13332e;
+}
+.origin { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; line-height: 1; padding: 3px 6px; border-radius: 2px; white-space: nowrap; vertical-align: middle; }
+.origin-agent { color: var(--origin-agent); background: var(--origin-agent-wash); }
+.origin-rules { color: var(--origin-rules); background: var(--origin-rules-wash); }
+.origin-human { color: var(--origin-human); background: var(--origin-human-wash); }
+.origin-legend { display: flex; flex-wrap: wrap; gap: 4px; }
+.sidebar .origin-legend .origin { background: rgba(255, 255, 255, 0.92); }
+.origins { display: inline-flex; flex-wrap: wrap; gap: 4px; vertical-align: middle; }
+.sidebar .origin-legend .origin-agent { color: #6b3fa0; }
+.sidebar .origin-legend .origin-rules { color: #484644; }
+.sidebar .origin-legend .origin-human { color: #0b6a5d; }
+.sc-resp { white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+

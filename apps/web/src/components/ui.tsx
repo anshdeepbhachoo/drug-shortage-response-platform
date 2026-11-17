@@ -456,3 +456,53 @@ export function ChartGuide({ items, example, open = false }: { items: { mark: Ke
     </details>
   );
 }
+
+/** Who produced a piece of work: an AI agent, deterministic code, or a person. Icon plus word, never colour alone. */
+export type OriginKind = "agent" | "rules" | "human";
+const ORIGIN_WORD: Record<OriginKind, string> = { agent: "Agent", rules: "Rules", human: "Human" };
+const ORIGIN_HELP: Record<OriginKind, string> = {
+  agent: "Produced by an AI agent",
+  rules: "Produced by deterministic code (rules, calculations, checks)",
+  human: "Done by a person",
+};
+
+function OriginIcon({ kind }: { kind: OriginKind }) {
+  if (kind === "agent")
+    return (
+      <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden focusable="false">
+        <path d="M8 1.5 9.6 6.4 14.5 8 9.6 9.6 8 14.5 6.4 9.6 1.5 8 6.4 6.4Z" fill="currentColor" />
+      </svg>
+    );
+  if (kind === "rules")
+    return (
+      <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden focusable="false">
+        <path d="M5.5 3 2 8l3.5 5M10.5 3 14 8l-3.5 5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden focusable="false">
+      <circle cx="8" cy="5" r="2.8" fill="currentColor" />
+      <path d="M2.5 14.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function Origin({ by, label, compact }: { by: OriginKind; label?: string; compact?: boolean }) {
+  return (
+    <span className={`origin origin-${by}`} title={label ? `${ORIGIN_HELP[by]}: ${label}` : ORIGIN_HELP[by]}>
+      <OriginIcon kind={by} />
+      {compact ? <span className="sr-only">{ORIGIN_WORD[by]}</span> : <span>{label ?? ORIGIN_WORD[by]}</span>}
+    </span>
+  );
+}
+
+/** The key to the three marks. */
+export function OriginLegend() {
+  return (
+    <div className="origin-legend" aria-label="Who did the work">
+      <Origin by="agent" />
+      <Origin by="rules" />
+      <Origin by="human" />
+    </div>
+  );
+}

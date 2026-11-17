@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { timeLabel } from "../data/mock";
 import { useStore } from "../lib/store";
-import { Card, ChartGuide, Change, Empty, Meter, PageHead, SourceChip, Sources, Status } from "../components/ui";
+import { Card, ChartGuide, Change, Empty, Meter, Origin, PageHead, SourceChip, Sources, Status } from "../components/ui";
 import type { SupplyEvent } from "../lib/types";
 
 const EVENT_STATUS: Record<SupplyEvent["status"], { tone: "crit" | "warn" | "good"; text: string }> = {
@@ -65,7 +65,13 @@ export function Events({ openPlan }: { openPlan?: (eventId: string) => void } = 
 
               <div>
                 <div className="label" style={{ marginBottom: 8 }}>
-                  {state.live ? "Assessment agent extraction" : "2 · What the AI understood"}
+                  {state.live ? (
+                    <>
+                      <Origin by="agent" label="Assessment agent" /> extraction
+                    </>
+                  ) : (
+                    "2 · What the AI understood"
+                  )}
                 </div>
                 {email.extraction.poRef ? (
                   <div className="read-out">
