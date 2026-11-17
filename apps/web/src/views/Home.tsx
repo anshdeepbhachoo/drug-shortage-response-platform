@@ -5,13 +5,13 @@ import { drugById, siteName } from "../data/mock";
 import { lineCoverage, tierFor } from "../lib/risk";
 import { useStore } from "../lib/store";
 
-type Go = (view: "hospitals" | "board" | "events" | "approvals" | "audit") => void;
+type Go = (view: "hospitals" | "alerts" | "events" | "approvals" | "audit") => void;
 
 /** Live home: a dashboard of tiles, each a summary that opens the page behind it. */
 export function Home({ go }: { go: Go }) {
   return (
     <>
-      <PageHead label="Home" title="Today across the network" lead="Each tile sums up one part of the platform. Click a tile to open it." />
+      <PageHead label="Overview" title="Network Overview" />
       <LiveBar />
       <div className="tiles">
         <HospitalsTile go={go} />
@@ -73,7 +73,7 @@ function HospitalsTile({ go }: { go: Go }) {
   const red = sites.filter((s) => s.tier === "red").length;
   const amber = sites.filter((s) => s.tier === "amber").length;
   return (
-    <Tile title="Hospitals" value={red} tone={red ? "crit" : "good"} sub={`with a drug under 7 days · ${amber} more under 14`} onOpen={() => go("hospitals")}>
+    <Tile title="Facilities at risk" value={red} tone={red ? "crit" : "good"} sub={`with an item under 7 days of supply · ${amber} more under 14`} onOpen={() => go("hospitals")}>
       <Rows
         empty="No hospital stock yet."
         rows={sites.slice(0, 3).map((s) => ({
@@ -99,7 +99,7 @@ function StockTile({ go }: { go: Go }) {
   }
   const top = [...worst.values()].filter((l) => tierFor(l.days, l.line.safetyDays) !== "green").sort((a, b) => a.days - b.days).slice(0, 3);
   return (
-    <Tile title="Stock at risk" value={red} tone={red ? "crit" : "good"} sub={`critical (under 7 days) · ${amber} more under 14 days`} onOpen={() => go("board")}>
+    <Tile title="Critical items" value={red} tone={red ? "crit" : "good"} sub={`drug–facility pairs under 7 days · ${amber} under 14`} onOpen={() => go("hospitals")}>
       <Rows
         empty="Every drug has at least 14 days everywhere."
         rows={top.map((l) => ({
@@ -122,7 +122,7 @@ function ProblemsTile({ go }: { go: Go }) {
   const handled = state.events.filter((e) => e.status === "mitigated").length;
   const critical = open.filter((e) => drugById(e.drugId)?.criticalList).length;
   return (
-    <Tile title="Problems" value={open.length} tone={open.length ? "warn" : "good"} sub={`open · ${critical} on the critical list · ${handled} handled`} onOpen={() => go("events")}>
+    <Tile title="Shortage alerts" value={open.length} tone={open.length ? "warn" : "good"} sub={`open · ${critical} critical-list drugs · ${handled} mitigated`} onOpen={() => go("alerts")}>
       <Rows
         empty="No open problems."
         rows={open.slice(0, 3).map((e) => ({
@@ -140,7 +140,7 @@ function ApprovalsTile({ go }: { go: Go }) {
   const pending = state.plans.filter((p) => p.status === "pending-approval");
   const plans = [...new Set(pending.map((p) => p.solverRun))].map((run) => pending.filter((p) => p.solverRun === run));
   return (
-    <Tile title="Waiting for a decision" value={plans.length} tone={plans.length ? "warn" : "good"} sub="plans, one decision each" onOpen={() => go("approvals")}>
+    <Tile title="Pending approvals" value={plans.length} tone={plans.length ? "warn" : "good"} sub="response plans awaiting a decision" onOpen={() => go("approvals")}>
       <Rows
         empty="Nothing waiting."
         rows={plans.slice(0, 3).map((options) => ({
@@ -161,9 +161,9 @@ function FollowUpTile({ go }: { go: Go }) {
   const trouble = all.filter((f) => f.decision === "escalate" || f.decision === "replan" || f.decision === "nudge").length;
   return (
     <Tile
-      title="Follow-up on approved transfers"
+      title="Follow-up"
       value={all.length}
-      sub={all.length ? `approved transfers · ${trouble} need attention` : "approved transfers"}
+      sub={all.length ? `approved transfers tracked · ${trouble} need attention` : "approved transfers tracked"}
       tone={trouble ? "warn" : all.length ? "good" : "neutral"}
       onOpen={() => go("audit")}
     >
@@ -189,10 +189,10 @@ function InboxTile({ go }: { go: Go }) {
   const arriving = state.live?.inbox ?? [];
   return (
     <Tile
-      title="Supplier inbox"
+      title="Supplier notices"
       value={mail.length}
       tone={blocked || waiting ? "warn" : mail.length ? "good" : "neutral"}
-      sub={report ? `emails on ${report.day.slice(5)} · ${blocked} held for a person · ${waiting} waiting` : "no day run yet"}
+      sub={report ? `received ${report.day.slice(5)} · ${blocked} held for review · ${waiting} pending` : "no run yet"}
       onOpen={() => go("events")}
     >
       <Rows

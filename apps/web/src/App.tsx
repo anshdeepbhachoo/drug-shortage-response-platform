@@ -6,6 +6,7 @@ import { USERS, timeLabel } from "./data/mock";
 import { DayControl } from "./components/LiveBar";
 import { STEPS, useStore } from "./lib/store";
 import type { Role } from "./lib/types";
+import { Alerts } from "./views/Alerts";
 import { Approvals } from "./views/Approvals";
 import { Audit } from "./views/Audit";
 import { DataSources } from "./views/DataSources";
@@ -16,11 +17,12 @@ import { Hospitals } from "./views/Hospitals";
 import { Plans } from "./views/Plans";
 import { RiskBoard } from "./views/RiskBoard";
 
-export type ViewId = "home" | "hospitals" | "board" | "events" | "plans" | "approvals" | "drafts" | "audit" | "data";
+export type ViewId = "home" | "hospitals" | "alerts" | "board" | "events" | "plans" | "approvals" | "drafts" | "audit" | "data";
 
 const NAV: { id: ViewId; label: string; roles: Role[] }[] = [
   { id: "home", label: "Home", roles: ["supply", "pharmacist", "procurement", "auditor"] },
   { id: "hospitals", label: "Hospitals", roles: ["supply", "pharmacist", "procurement", "auditor"] },
+  { id: "alerts", label: "Shortage Alerts", roles: ["supply", "pharmacist", "procurement", "auditor"] },
   { id: "board", label: "Stock", roles: ["supply", "pharmacist", "procurement", "auditor"] },
   { id: "events", label: "Alerts", roles: ["supply", "pharmacist", "auditor"] },
   { id: "plans", label: "Plans", roles: ["supply", "pharmacist", "procurement", "auditor"] },
@@ -29,6 +31,16 @@ const NAV: { id: ViewId; label: string; roles: Role[] }[] = [
   { id: "audit", label: "History", roles: ["supply", "pharmacist", "procurement", "auditor"] },
   { id: "data", label: "Data", roles: ["supply", "auditor"] },
 ];
+
+/** Live mode is the MVP: only the pages that walk through detect → plan → decide → follow up → audit. */
+const LIVE_NAV: Partial<Record<ViewId, string>> = {
+  home: "Overview",
+  hospitals: "Network Dashboard",
+  alerts: "Shortage Alerts",
+  approvals: "Approval Queue",
+  events: "Signal Review",
+  audit: "Audit Trail",
+};
 
 const HOME: Record<Role, ViewId> = { supply: "board", pharmacist: "approvals", procurement: "drafts", auditor: "audit" };
 const STEP_VIEW: ViewId[] = ["board", "events", "plans", "approvals", "board", "plans", "audit"];
@@ -151,7 +163,7 @@ export function App() {
   }, [live.mode]);
 
   const counts: Partial<Record<ViewId, number>> = {
-    events: state.events.filter((e) => e.status === "open").length,
+    [live.mode === "live" ? "alerts" : "events"]: state.events.filter((e) => e.status === "open").length,
     // One decision per plan: count plans, not their options.
     approvals: new Set(state.plans.filter((p) => p.status === "pending-approval").map((p) => (state.live ? p.solverRun : p.id))).size,
     drafts: state.drafts.filter((d) => d.status === "draft").length,
@@ -183,7 +195,11 @@ export function App() {
 
   const atEnd = state.step === STEPS.length - 1;
   const story = STORY[state.step];
-  const visibleNav = NAV.filter((n) => n.roles.includes(state.role) && (n.id !== "home" || live.mode === "live"));
+  const isLive = live.mode === "live";
+  // Live: the pipeline order (see → act → decide → verify → audit). Demo: the scripted story's pages.
+  const visibleNav = isLive
+    ? (Object.keys(LIVE_NAV) as ViewId[]).map((id) => NAV.find((n) => n.id === id)!).filter((n) => n.roles.includes(state.role))
+    : NAV.filter((n) => n.roles.includes(state.role) && !["home", "hospitals", "alerts"].includes(n.id));
   const activeView = visibleNav.some((n) => n.id === view) ? view : homeFor(state.role);
   const tourSteps = useMemo(() => [...SHELL_TIPS, ...(PAGE_TIPS[activeView] ?? [])], [activeView]);
 
@@ -205,11 +221,12 @@ export function App() {
                   setFocusEvent(null);
                   go(n.id);
                 }} aria-current={n.id === activeView ? "page" : undefined}>
-                {n.id === "events" && live.mode === "live" ? "Problems" : n.label}
+                {isLive ? LIVE_NAV[n.id] : n.label}
                 {!!counts[n.id] && <span className="count">{counts[n.id]}</span>}
               </button>
             ))}
           </nav>
+          {live.mode === "offline" && (
           <button
             className="tour-btn"
             onClick={() => {
@@ -224,6 +241,7 @@ export function App() {
             </span>
             <span className="tour-label">Show me around</span>
           </button>
+          )}
           <div className="who">
             <span className="label">Viewing as</span>
             <div className="who-row">
@@ -308,18 +326,28 @@ export function App() {
           <Events
             openPlan={(eventId) => {
               setFocusEvent(eventId);
-              go("plans");
+              go(isLive ? "approvals" : "plans");
             }}
           />
         )}
         {activeView === "plans" && <Plans focusEvent={focusEvent} />}
-        {activeView === "approvals" && <Approvals />}
+        {activeView === "alerts" && (
+          <Alerts
+            focusEvent={focusEvent}
+            go={(v, eventId) => {
+              setFocusEvent(eventId ?? null);
+              go(v);
+            }}
+          />
+        )}
+        {activeView === "approvals" && <Approvals focusEvent={focusEvent} />}
         {activeView === "drafts" && <Drafts />}
         {activeView === "audit" && <Audit />}
         {activeView === "data" && <DataSources />}
 
         {touring && <Tour key={activeView} steps={tourSteps} onClose={endTour} />}
-        {welcoming && <Welcome role={state.role} onDone={endWelcome} />}
+        {/* The welcome and tour narrate the scripted demo; the live console opens straight to work. */}
+        {welcoming && live.mode === "offline" && <Welcome role={state.role} onDone={endWelcome} />}
 
         <p className="foot-note">
           {live.mode === "live"

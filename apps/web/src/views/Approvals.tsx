@@ -5,10 +5,11 @@ import { USERS, drugById, siteName, timeLabel } from "../data/mock";
 import { useStore } from "../lib/store";
 import type { Plan } from "../lib/types";
 
-export function Approvals() {
+export function Approvals({ focusEvent }: { focusEvent?: string | null } = {}) {
   const { state } = useStore();
   const isLive = state.live !== null;
-  const [drugFilter, setDrugFilter] = useState("");
+  // Opened from an alert: show that drug's plan first.
+  const [drugFilter, setDrugFilter] = useState(() => state.events.find((e) => e.id === focusEvent)?.drugId ?? "");
   const [siteFilter, setSiteFilter] = useState("");
   const allPending = state.plans.filter((p) => p.status === "pending-approval");
   const pending = allPending.filter(
@@ -30,11 +31,11 @@ export function Approvals() {
   return (
     <>
       <PageHead
-        label="Approvals"
-        title={waiting ? `${waiting} plan${waiting > 1 ? "s" : ""} waiting for a decision` : "Nothing waiting for a decision"}
+        label={isLive ? "Approval Queue" : "Approvals"}
+        title={isLive ? "Approval Queue" : waiting ? `${waiting} plan${waiting > 1 ? "s" : ""} waiting for a decision` : "Nothing waiting for a decision"}
         lead={
           isLive
-            ? "Each plan lists every option that passed its checks. Choose one. The supply manager can choose any option except a substitution, which needs a pharmacist. Transfers are re-checked against today's stock first. Nothing is sent."
+            ? `${waiting} plan${waiting === 1 ? "" : "s"} pending · all options shown have passed safety checks · transfers are re-validated against current stock at approval · substitutions require pharmacist sign-off`
             : "Only the pharmacist at the receiving hospital can approve a plan. Approving records the decision and writes the messages, but sends nothing."
         }
       />
@@ -102,8 +103,8 @@ export function Approvals() {
       {approved.length > 0 && (
         <section>
           <div className="section-head">
-            <h2>Approved plans</h2>
-            <span className="meta">the option a person chose, in full</span>
+            <h2>Approved</h2>
+            <span className="meta">selected options</span>
           </div>
           <div className="stack" style={{ gap: 16 }}>
             {approved.map((p) => (
@@ -113,7 +114,7 @@ export function Approvals() {
         </section>
       )}
 
-      <Card label="On the record" title="Past decisions">
+      <Card label="Decision log" title="Recent decisions">
         {decisions.length === 0 ? (
           <p className="muted">No decisions yet.</p>
         ) : (
@@ -165,7 +166,7 @@ function PlanChoice({ options }: { options: Plan[] }) {
     <section className="stack" style={{ gap: 12 }}>
       <div className="section-head" style={{ marginBottom: 0 }}>
         <h2>
-          {drugById(first.drugId)?.name ?? first.drugId}: choose one of {options.length} option{options.length > 1 ? "s" : ""}
+          {drugById(first.drugId)?.name ?? first.drugId} · {options.length} option{options.length > 1 ? "s" : ""}
         </h2>
         <span className="meta">Plan {first.solverRun}</span>
       </div>
@@ -208,7 +209,7 @@ function PlanChoice({ options }: { options: Plan[] }) {
           title={note.trim() ? undefined : "Write why before rejecting"}
           onClick={() => dispatch({ type: "reject", planId: first.id, note })}
         >
-          Reject the whole plan
+          Reject plan
         </button>
       </div>
     </section>

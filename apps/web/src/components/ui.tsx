@@ -1,5 +1,6 @@
 import { createContext, useContext, useId, useState, type ReactNode } from "react";
 import { SOURCES, dayLabel } from "../data/mock";
+import { useStore } from "../lib/store";
 import type { Tier } from "../lib/types";
 
 /* ---------------------------------------------------------------
@@ -39,12 +40,12 @@ export function Tag({ children, solid }: { children: ReactNode; solid?: boolean 
 /* ---------------------------------------------------------------
    Layout pieces
 ---------------------------------------------------------------- */
-export function PageHead({ title, lead, label }: { title: string; lead: ReactNode; label?: string }) {
+export function PageHead({ title, lead, label }: { title: string; lead?: ReactNode; label?: string }) {
   return (
     <header className="page-head">
-      {label && <span className="label">{label}</span>}
+      {label && !title.includes(label) && <span className="label">{label}</span>}
       <h1>{title}</h1>
-      <p className="lead">{lead}</p>
+      {lead && <p className="lead">{lead}</p>}
     </header>
   );
 }
@@ -434,6 +435,8 @@ export function ProjectionChart({
 export type KeyMark = "bar-good" | "bar-warn" | "bar-crit" | "zone" | "floor" | "after" | "gain" | "line-1" | "line-2" | "dot" | "drop" | "gap" | "danger" | "tick" | "cost" | "ok" | "bad";
 
 export function ChartGuide({ items, example, open = false }: { items: { mark: KeyMark; text: ReactNode }[]; example?: ReactNode; open?: boolean }) {
+  // Reading guides belong to the scripted demo; the live console is for trained staff.
+  if (useStore().state.live) return null;
   return (
     <details className="guide" open={open}>
       <summary>How to read this chart</summary>

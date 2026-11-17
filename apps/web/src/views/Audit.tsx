@@ -51,9 +51,13 @@ export function Audit() {
   return (
     <>
       <PageHead
-        label="History"
-        title="Everything that happened, in order"
-        lead={`${state.audit.length} entries so far: ${humans} by people, ${ai} by the AI, the rest by the planner and system. Entries can only be added, never changed.`}
+        label={state.live ? "Audit Trail" : "History"}
+        title={state.live ? "Audit Trail" : "Everything that happened, in order"}
+        lead={
+          state.live
+            ? `${state.audit.length} entries · ${humans} human · ${ai} agent · remainder system and rules · append-only`
+            : `${state.audit.length} entries so far: ${humans} by people, ${ai} by the AI, the rest by the planner and system. Entries can only be added, never changed.`
+        }
       />
 
       <div className="grid-2">
@@ -133,7 +137,7 @@ function Trace() {
   const projectedDays = lineCoverage(projectedLine);
 
   return (
-    <Card label="Trace a number" title="Where does this number come from?">
+    <Card label="Data lineage" title={state.live ? "Trace a figure to its source" : "Where does this number come from?"}>
       <div className="row" style={{ marginBottom: 16 }}>
         <select className="input" value={drugId} onChange={(e) => setDrugId(e.target.value)} aria-label="Drug">
           {DRUGS.map((d) => (

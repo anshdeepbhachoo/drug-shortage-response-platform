@@ -44,18 +44,15 @@ export function LiveBar() {
               Simulated day {days.indexOf(asOf) + 1} of {days.length} · {dayLabel(0)}
             </span>
           </div>
-          <h2>The platform runs on its own, one day at a time.</h2>
-          <p>
-            Each day it loads the hospitals' data, reads the supplier emails that arrived, scans every drug at every site, plans a
-            response to each new problem and follows up on approved transfers. People only approve.
-          </p>
+          <h2>Daily pipeline</h2>
+          <p>Ingest facility data → assess supplier notices → stock watch → Health Canada reports → plan and check → follow-up</p>
         </div>
         <div className="story-actions">
           <button className="btn" onClick={() => setAuto((a) => !a)} disabled={(!auto && busy) || (alreadyRun && isLast)}>
             {auto ? "Stop auto-run" : "Auto-run"}
           </button>
           <button className="btn primary" onClick={() => void live.runDay(asOf, planner)} disabled={busy || alreadyRun}>
-            {alreadyRun ? `${dayLabel(0)} done` : `Run ${dayLabel(0)} ▶`}
+            {alreadyRun ? `${dayLabel(0)} complete` : `Run ${dayLabel(0)}`}
           </button>
         </div>
       </div>
@@ -85,25 +82,25 @@ export function LiveBar() {
           </select>
         </label>
         <div className="live-field">
-          <span className="label">Hospital data for {dayLabel(0)}</span>
+          <span className="label">Facility data · {dayLabel(0)}</span>
           <span className="small ink-2">
             {state.live?.loadedDays.includes(asOf)
-              ? "Arrived"
+              ? "Received"
               : state.live?.loadedDays.length
-                ? `Not arrived yet: showing the latest earlier day (${state.live.loadedDays.filter((d) => d < asOf).at(-1) ?? "none"})`
-                : "Nothing has arrived yet. Running the day loads it first."}
+                ? `Pending · showing ${state.live.loadedDays.filter((d) => d < asOf).at(-1) ?? "none"}`
+                : "Pending · loaded when the day runs"}
           </span>
         </div>
         <div className="live-field">
-          <span className="label">Arriving in the inbox on {dayLabel(0)}</span>
-          <span className="small ink-2">{state.live?.inbox.length ? state.live.inbox.join(", ") : "No supplier emails scheduled"}</span>
+          <span className="label">Supplier notices · {dayLabel(0)}</span>
+          <span className="small ink-2">{state.live?.inbox.length ? state.live.inbox.join(", ") : "None scheduled"}</span>
         </div>
         <Advanced />
       </div>
 
       {(live.busy || live.notice || live.error || report) && (
         <div className="live-status" role="status" aria-live="polite">
-          {live.busy && <span className="meta">{live.busy}… with the AI this takes a minute or two per day.</span>}
+          {live.busy && <span className="meta">{live.busy}…</span>}
           {report && !live.busy && <DayReport summary={report} />}
           {live.notice && (
             <div className="callout good">
@@ -165,16 +162,16 @@ export function DayControl({ openHome }: { openHome: () => void }) {
     <div className="day-control" role="region" aria-label="Simulated clock">
       <span className="badge-accent">Live</span>
       <span className="small">
-        Simulated day <b>{dayLabel(0)}</b> · {alreadyRun ? "already run" : "not run yet"}
+        Simulated day <b>{dayLabel(0)}</b> · {alreadyRun ? "run complete" : "not yet run"}
       </span>
       {live.busy && <span className="meta">{live.busy}…</span>}
       {live.error && <span className="small" style={{ color: "var(--crit-text)" }}>Not done: {live.error}</span>}
       <span style={{ flex: 1 }} />
       <button className="link small" onClick={openHome}>
-        Day report on Home
+        Run report
       </button>
       <button className="btn primary" onClick={() => void live.runDay(asOf, "auto")} disabled={live.busy !== null || alreadyRun}>
-        {alreadyRun ? `${dayLabel(0)} done` : `Run ${dayLabel(0)} ▶`}
+        {alreadyRun ? `${dayLabel(0)} complete` : `Run ${dayLabel(0)}`}
       </button>
     </div>
   );
@@ -192,29 +189,28 @@ function DayReport({ summary }: { summary: DaySummary }) {
       </span>
       <div style={{ flex: 1 }}>
         <strong>
-          {summary.day}: done ({summary.planner}). {summary.waiting_for_approval} plan{summary.waiting_for_approval === 1 ? "" : "s"} waiting for
-          approval.
+          Run report · {summary.day} · {summary.planner} · {summary.waiting_for_approval} pending approval{summary.waiting_for_approval === 1 ? "" : "s"}
         </strong>
         <ul>
           <li>
-            Inbox:{" "}
+            Supplier notices:{" "}
             {summary.emails.length
               ? summary.emails.map((e) => `${e.email} → ${e.status.replace(/_/g, " ")}`).join("; ")
-              : "nothing arrived"}
+              : "none"}
           </li>
           <li>
             Stock watch:{" "}
             {watch.alerts.length
               ? watch.alerts.map((a) => `${a.drug} at ${a.sites.join(", ")} (${a.kind.replace("_", " ")}) → ${a.status.replace(/_/g, " ")}`).join("; ")
-              : "no new problems"}
-            {watch.waiting > 0 && `; ${watch.waiting} more waiting for tomorrow`}
+              : "no new alerts"}
+            {watch.waiting > 0 && `; ${watch.waiting} deferred to next run`}
           </li>
-          <li>Health Canada reports: {summary.shortage_reports.reports ? `${summary.shortage_reports.reports} planned` : "nothing new for our drugs"}</li>
+          <li>Health Canada reports: {summary.shortage_reports.reports ? `${summary.shortage_reports.reports} planned` : "no new reports for tracked drugs"}</li>
           <li>
             Follow-up:{" "}
             {summary.followup.length
               ? summary.followup.map((f) => (byId.has(f.transfer) ? followupLine(byId.get(f.transfer)!, f.decision) : `${f.transfer}: ${f.decision}`)).join("; ")
-              : "no approved transfers to check"}
+              : "no approved transfers"}
           </li>
         </ul>
       </div>
