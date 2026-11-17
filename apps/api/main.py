@@ -166,6 +166,48 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
         return guard(lambda: plan_for_drug(write_engine, read_engine, din, body.as_of, body.by,
                                            body.site_id, llm=llm, planner=body.planner))
 
+    # ---- Supplier orders (services/agents/order_*.py) -------------------------
+
+    @app.get("/api/orders")
+    def orders(as_of: date | None = None):
+        """Every order the order agent manages, its timeline, and days of stock left."""
+
+        from services.agents.order_view import orders_page
+
+        return guard(lambda: orders_page(read_engine, PostgresData(read_engine, as_of=as_of)))
+
+    @app.post("/api/orders/{order_id}/{decision}")
+    def decide_order(order_id: str, decision: str, body: Decision):
+        """Approve or reject a drafted order. Goes through OrderAgent: role, spend limit, re-check, audit."""
+
+        from services.agents.order_agent import OrderError, UnknownOrder
+        from services.agents.order_db import approve_order, reject_order
+
+        if decision not in ("approve", "reject"):
+            raise HTTPException(404, "Use /approve or /reject.")
+        role = UI_ROLES.get(body.role, body.role)
+        if role not in ("procurement", "supply_manager"):
+            raise HTTPException(403, "Only procurement or the supply manager can decide supplier orders.")
+        note = (body.note or "").strip() or None
+        if decision == "reject" and not note:
+            raise HTTPException(422, "A note is needed to reject an order.")
+        data = PostgresData(read_engine, as_of=body.as_of)
+        # With a stock day, the decision is timed on the simulated clock (noon that day).
+        at = datetime.combine(body.as_of, time(12)) if body.as_of else datetime.now(timezone.utc)
+
+        def run():
+            if decision == "approve":
+                order = approve_order(write_engine, order_id, body.by, role, data, at, note)
+            else:
+                order = reject_order(write_engine, order_id, body.by, role, note, data, at)
+            return {"order_id": order.order_id, "status": order.status}
+        try:
+            return guard(run)
+        except UnknownOrder:
+            raise HTTPException(404, f"No order {order_id}.")
+        except OrderError as error:
+            raise HTTPException(409, str(error))
+
     @app.post("/api/followup/run")
     def run_followup_check(body: RunFollowup):
         from services.agents.followup_db import run_followup

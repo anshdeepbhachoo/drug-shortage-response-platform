@@ -30,10 +30,21 @@ class Move(BaseModel):
     units: int = Field(gt=0)
 
 
+class OrderLine(BaseModel):
+    """One line of an order option: units for one site from one supplier.
+    Built in code from the supplier catalog (order_rules.py), never by a model."""
+
+    supplier_id: str
+    site_id: str
+    units: int = Field(gt=0)
+    unit_cost: float | None = Field(default=None, ge=0)
+
+
 class PlanOption(BaseModel):
-    type: Literal["transfer", "substitute", "conserve", "escalate"]
+    type: Literal["transfer", "order", "substitute", "conserve", "escalate"]
     description: str
     moves: list[Move] = Field(default_factory=list)
+    orders: list[OrderLine] = Field(default_factory=list)
     reasoning: str
 
 

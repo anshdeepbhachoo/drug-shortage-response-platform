@@ -17,6 +17,7 @@ Usage:
   python -m ingestion.workflow nightly --batch-size 25 --max-batches 0 --shortage-max-pages 5
   python -m ingestion.workflow followup                     # check approved transfers (rules only)
   python -m ingestion.workflow day --date 2026-11-16       # the whole platform for one day (cron: daily)
+  python -m ingestion.workflow orders                       # draft reorders, place approved orders, follow up
 
 Scheduling is left to the host, e.g. cron at 02:00:
   0 2 * * * cd /path/to/repo && .venv/bin/python -m ingestion.workflow nightly
@@ -243,7 +244,46 @@ def day_tasks(day=None, llm=None) -> list[Task]:
     return [Task("day", run, retries=0)]
 
 
-WORKFLOWS: dict[str, Callable[[], list[Task]]] = {"nightly": nightly_tasks, "followup": followup_tasks, "day": day_tasks}
+def orders_tasks(data=None, now=None) -> list[Task]:
+    """Supplier orders (services/agents/order_db.py), rules only, no model:
+    scan drafts reorders for sites heading under safety stock, then run places
+    approved orders (simulated channel) and follows up open ones. Run
+    `python -m services.agents.order_db run --live` to use Bedrock."""
+
+    def _source(engine):
+        import os
+
+        from services.agents.db_data import PostgresData
+
+        return data or (PostgresData.from_env() if os.getenv("DATABASE_URL_READONLY") else PostgresData(engine))
+
+    def _now():
+        from datetime import datetime, timezone
+
+        return now or datetime.now(timezone.utc)
+
+    def scan(engine: Engine, params: Params) -> dict:
+        from services.agents.order_db import scan as scan_orders
+
+        drafted = scan_orders(engine, _source(engine), _now())
+        return {"drafted": len(drafted), "total_cost": round(sum(o.total_cost for o in drafted), 2)}
+
+    def follow(engine: Engine, params: Params) -> dict:
+        from collections import Counter
+
+        from services.agents.order_db import run_orders
+
+        actions, planned = run_orders(engine, _source(engine), _now())
+        return {"checked": len(actions), "raised_events": len(planned),
+                **Counter(action.decision for action in actions)}
+
+    return [Task("scan", scan, retries=1, retry_delay=60),
+            Task("orders", follow, depends_on=("scan",), retries=1, retry_delay=60)]
+
+
+WORKFLOWS: dict[str, Callable[[], list[Task]]] = {
+    "nightly": nightly_tasks, "followup": followup_tasks, "day": day_tasks, "orders": orders_tasks,
+}
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -129,8 +129,14 @@ def _plans_raw(conn) -> list[dict]:
         LEFT JOIN decision d ON d.plan_id = p.plan_id
         ORDER BY p.created_at DESC""")
     actions = _rows(conn, """
-        SELECT plan_id, option_index, action_id, type, description, reasoning, from_site, to_site, units, verified
-        FROM plan_action ORDER BY plan_id, option_index, action_id""")
+        SELECT a.plan_id, a.option_index, a.action_id, a.type, a.description, a.reasoning, a.from_site, a.to_site,
+               a.units, a.verified, a.supplier_id, s.name AS supplier_name, c.lead_time_days, c.unit_cost
+        FROM plan_action a
+        LEFT JOIN plan p ON p.plan_id = a.plan_id
+        LEFT JOIN supply_event e ON e.event_id = p.event_id
+        LEFT JOIN supplier s ON s.supplier_id = a.supplier_id
+        LEFT JOIN supplier_catalog c ON c.supplier_id = a.supplier_id AND c.din = e.din
+        ORDER BY a.plan_id, a.option_index, a.action_id""")
     by_plan: dict[str, dict[int, list[dict]]] = {}
     for action in actions:
         by_plan.setdefault(action["plan_id"], {}).setdefault(action["option_index"], []).append(action)
@@ -212,23 +218,32 @@ def plan_cards(plans: list[dict]) -> list[dict]:
             verified = index in passed
             if passed and not verified:
                 continue
-            transfers = [{"from": a["from_site"], "to": a["to_site"], "qty": a["units"]} for a in actions if a["units"]]
+            transfers = [{"from": a["from_site"], "to": a["to_site"], "qty": a["units"]}
+                         for a in actions if a["units"] and a["from_site"]]
+            # Supplier orders (order_agent): no "from" hospital; etaDay is the supplier's lead time from today.
+            orders = [{"qty": a["units"], "etaDay": a.get("lead_time_days") or 0,
+                       "supplier": a.get("supplier_name") or a.get("supplier_id") or "Supplier", "premiumPct": 0}
+                      for a in actions if a["type"] == "order" and a["units"]]
+            order_cost = sum(a["units"] * float(a.get("unit_cost") or 0) for a in actions if a["type"] == "order" and a["units"])
             # Hospitals this option involves: the ones at risk and any it moves stock between.
             sites = set((plan["detail"] or {}).get("risk_sites") or [])
             sites |= {t["from"] for t in transfers} | {t["to"] for t in transfers}
+            sites |= {a["to_site"] for a in actions if a["type"] == "order" and a["to_site"]}
             cards.append({
                 "id": f"{plan['plan_id']}-O{index}", "eventId": plan["event_id"], "drugId": plan["din"],
                 "solverRun": plan["plan_id"], "rank": index,
-                "title": first["description"], "transfers": transfers, "orders": [],
+                "title": first["description"], "transfers": transfers, "orders": orders,
                 "score": round(max(0.1, (0.95 if verified else 0.4) - 0.05 * (index - 1)), 2),
-                "cost": "≈ $0 (courier transfer)" if transfers else "No cost estimate",
-                "leadTime": "Tomorrow by courier" if transfers else LEAD_TIME.get(first["type"], "Needs a person"),
+                "cost": (f"≈ ${order_cost:,.0f} (supplier order)" if orders else
+                         "≈ $0 (courier transfer)" if transfers else "No cost estimate"),
+                "leadTime": (f"{max(o['etaDay'] for o in orders)} days from the supplier" if orders else
+                             "Tomorrow by courier" if transfers else LEAD_TIME.get(first["type"], "Needs a person")),
                 "optionType": first["type"],
                 "chooseRoles": sorted(UI_ROLE_OF[r] for r in APPROVER_ROLES.get(first["type"], set()) if r in UI_ROLE_OF),
                 "explanation": first["reasoning"] or "",
                 "citations": [plan["event_id"], plan["plan_id"]],
                 "status": _option_status(plan, index, verified),
-                "sites": sorted(sites),
+                "sites": sorted(s for s in sites if s),
                 "createdAt": plan["created_at"].isoformat(),
                 **({"decisionNote": plan["decision_note"]} if plan["decision_note"] and index == plan["approved_option"] else {}),
             })
@@ -303,7 +318,7 @@ def _detail_text(row: dict, site_names: dict[str, str]) -> str:
     action = row["action"]
     if action in ("Approved", "Rejected"):
         what = f"Option {detail['option']} ({detail.get('type', 'plan')})" if detail.get("option") else "Plan"
-        moves = [a for a in detail.get("actions", []) if a.get("units")]
+        moves = [a for a in detail.get("actions", []) if a.get("units") and a.get("from_site")]
         if moves:
             name = lambda site: site_names.get(site, site)
             what += ": " + ", ".join(f"{a['units']} units from {name(a['from_site'])} to {name(a['to_site'])}" for a in moves)

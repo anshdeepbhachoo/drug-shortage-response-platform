@@ -1,0 +1,6 @@
+supplier_id,name,channel,on_time_rate,contact,active
+meridian-pharma,Meridian Pharma,edi,0.82,orders@meridian-pharma.example,true
+apex-sterile,Apex Sterile,api,0.95,orders@apex-sterile.example,true
+northgate-labs,Northgate Labs,email,0.9,orders@northgate-labs.example,true
+harbour-wholesale,Harbour Wholesale,email,0.88,orders@harbour-wholesale.example,true
+cascade-oncology,Cascade Oncology,email,0.93,orders@cascade-oncology.example,true

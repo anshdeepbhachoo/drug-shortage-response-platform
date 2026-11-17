@@ -151,6 +151,14 @@ export const PAGE_TIPS: Record<string, TourStep[]> = {
     { sel: ".letter", title: "A ready-to-send message", body: "The AI drafts each message from the approved plan. Copy it and send it the usual way." },
     { sel: ".mail-list", title: "All messages", body: "Every draft from approved plans. Mark one as sent once it has gone out, so it goes on the record." },
   ],
+  orders: [
+    { sel: ".stats", title: "Orders at a glance", body: "How many supplier orders wait for approval, need a person, are on the way, or are done. Click a card to show only those." },
+    { sel: ".grid-even", title: "Where orders are, and where the money goes", body: "Left: how many orders sit at each stage, from waiting for approval to delivered. Click a bar to list those orders. Right: spend by supplier, approved versus still waiting." },
+    { sel: ".arrive-card", title: "Will it arrive in time?", body: "Each line is an open order. The blue bar runs to the day it should arrive; the red mark is the day the hospital runs out. A red mark before the dot means too late. Click a line to open the order." },
+    { sel: ".order-table", title: "Every order, most urgent first", body: "The drug, the hospital it's for, the supplier the rules picked, and how many days of stock the hospital has left. Click a row for details." },
+    { sel: ".order-detail", title: "Decide on an order", body: "Why the agent wants it and what has happened since. Procurement approves up to $10,000; above that, the supply manager does. Rejecting needs a note." },
+    { sel: ".order-detail + *, .page > .card:last-of-type .timeline", title: "What the agent did", body: "Every check, in order: P is a person, R a fixed rule, AI the AI agent deciding an unclear case from the choices the rules allowed." },
+  ],
   audit: [
     { sel: ".timeline", title: "Everything, in order", body: "Every action by people, the AI, the planner and the system, newest first. Entries can only be added, never changed." },
     { sel: ".filters", title: "Filter by who did it", body: "Show only what people decided, or only what the AI did." },

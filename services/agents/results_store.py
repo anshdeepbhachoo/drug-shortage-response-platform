@@ -45,7 +45,11 @@ def _actions(plan_id: str, result: dict) -> list[dict]:
             "verified": option in verified,
             "problems": json.dumps(rejected[index]) if index in rejected else None,
         }
-        moves = option.get("moves") or [None]
+        # Transfers have moves (from -> to); orders have order lines (supplier -> site).
+        moves = option.get("moves") or [
+            {"from_site": None, "to_site": line["site_id"], "units": line["units"], "supplier_id": line["supplier_id"]}
+            for line in option.get("orders") or []
+        ] or [None]
         for move_index, move in enumerate(moves):
             rows.append({
                 **common,
@@ -53,6 +57,7 @@ def _actions(plan_id: str, result: dict) -> list[dict]:
                 "from_site": move["from_site"] if move else None,
                 "to_site": move["to_site"] if move else None,
                 "units": move["units"] if move else None,
+                "supplier_id": move.get("supplier_id") if move else None,
             })
     return rows
 
@@ -168,9 +173,9 @@ def save_pipeline_result(
                     text(
                         """
                         INSERT INTO plan_action (action_id, plan_id, option_index, type, description, reasoning,
-                                                 from_site, to_site, units, verified, problems)
+                                                 from_site, to_site, units, supplier_id, verified, problems)
                         VALUES (:action_id, :plan_id, :option_index, :type, :description, :reasoning,
-                                :from_site, :to_site, :units, :verified, CAST(:problems AS jsonb))
+                                :from_site, :to_site, :units, :supplier_id, :verified, CAST(:problems AS jsonb))
                         """
                     ),
                     action,

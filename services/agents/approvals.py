@@ -9,7 +9,11 @@ rules are enforced here in code (and the database), never by a model:
 - approving marks the plan's supply event as mitigated (it has a response);
 - a transfer is re-checked against *current* stock first. If a donor would now
   fall below its minimum (e.g. its usage went up since the plan was made), the
-  plan is marked broken and the approval is refused.
+  plan is marked broken and the approval is refused;
+- an order is re-checked against the supplier catalog and current stock the
+  same way, and procurement may only approve orders up to its spend limit
+  (order_rules.PROCUREMENT_LIMIT); larger ones need the supply manager.
+  Approved order options become purchase orders through order_db.py.
 
 The decision, plan status and an audit entry are written in one transaction.
 Approving executes nothing: it records that a person authorised the option.
@@ -59,7 +63,8 @@ class ApprovalError(Exception):
 
 def _options(conn: Connection, plan_id: str) -> dict[int, list[dict]]:
     rows = conn.execute(text("""
-        SELECT action_id, option_index, type, description, from_site, to_site, units, verified, problems
+        SELECT action_id, option_index, type, description, from_site, to_site, units, supplier_id,
+               verified, problems
         FROM plan_action WHERE plan_id = :plan_id
         ORDER BY option_index, action_id
     """), {"plan_id": plan_id}).all()
@@ -124,6 +129,38 @@ def recheck_transfer(data, din: str, actions: list[dict], detail: dict | None) -
         shortfall = dict(shortfall)
     return check_transfer(option, stock, shortfall, floor_days=DEFAULT_FLOOR_DAYS,
                           reserve_days=detail.get("cover_days") or {})
+
+
+def recheck_order(data, din: str, actions: list[dict], catalog=None) -> list[str]:
+    """Order lines re-checked against the supplier catalog and today's stock
+    (order_rules.check_order_option), and that no line has lost its supplier."""
+
+    from services.agents.order_rules import catalog_for, check_order_option
+    from services.agents.schemas import OrderLine
+
+    catalog = catalog or catalog_for(data)
+    if catalog is None:
+        return ["No supplier catalog is loaded, so the order cannot be re-checked."]
+    if any(not a.get("supplier_id") for a in actions):
+        return ["An order line has no supplier."]
+    lines = []
+    for a in actions:
+        offer = catalog.offer(a["supplier_id"], din)
+        lines.append(OrderLine(supplier_id=a["supplier_id"], site_id=a["to_site"], units=a["units"],
+                               unit_cost=offer.unit_cost if offer else None))
+    option = PlanOption(type="order", description="approval re-check", orders=lines, reasoning="approval re-check")
+    return check_order_option(option, din, catalog, data.stock(din))
+
+
+def order_total(data, din: str, actions: list[dict], catalog=None) -> float:
+    from services.agents.order_rules import catalog_for
+
+    catalog = catalog or catalog_for(data)
+    total = 0.0
+    for a in actions:
+        offer = catalog.offer(a["supplier_id"], din) if catalog else None
+        total += a["units"] * (offer.unit_cost if offer else 0.0)
+    return round(total, 2)
 
 
 # ---------------------------------------------------------
@@ -199,8 +236,16 @@ def approve_plan(
 
         refs = [plan_id, plan.event_id] + [a["action_id"] for a in actions]
 
-        if kind == "transfer":
-            problems = recheck_transfer(data, plan.din, actions, plan.detail)
+        if kind == "order":
+            from services.agents.order_rules import approval_problems
+
+            spend = approval_problems(order_total(data, plan.din, actions), role)
+            if spend:
+                raise ApprovalError(" ".join(spend))
+
+        if kind in ("transfer", "order"):
+            problems = (recheck_transfer(data, plan.din, actions, plan.detail) if kind == "transfer"
+                        else recheck_order(data, plan.din, actions))
             if problems:
                 conn.execute(text("UPDATE plan SET status = 'broken' WHERE plan_id = :p"), {"p": plan_id})
                 audit_id = _audit(conn, "approvals", "rule", "Approval refused: plan no longer safe", plan_id,
@@ -218,7 +263,8 @@ def approve_plan(
                      {"e": plan.event_id})
         audit_id = _audit(conn, by, "human", "Approved", plan_id,
                           {"role": role, "option": option, "type": kind, "note": note,
-                           "actions": [{k: a[k] for k in ("action_id", "from_site", "to_site", "units")} for a in actions]},
+                           "actions": [{k: a[k] for k in ("action_id", "from_site", "to_site", "units", "supplier_id")}
+                                       for a in actions]},
                           refs, at)
 
     return {"approved": True, "plan_id": plan_id, "status": "approved", "option": option,

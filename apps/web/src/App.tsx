@@ -13,10 +13,12 @@ import { Drafts } from "./views/Drafts";
 import { Events } from "./views/Events";
 import { Home } from "./views/Home";
 import { Hospitals } from "./views/Hospitals";
+import { Orders } from "./views/Orders";
+import { pendingCount, refreshOrders, useOrders } from "./lib/orders";
 import { Plans } from "./views/Plans";
 import { RiskBoard } from "./views/RiskBoard";
 
-export type ViewId = "home" | "hospitals" | "board" | "events" | "plans" | "approvals" | "drafts" | "audit" | "data";
+export type ViewId = "home" | "hospitals" | "board" | "events" | "plans" | "approvals" | "orders" | "drafts" | "audit" | "data";
 
 const NAV: { id: ViewId; label: string; roles: Role[] }[] = [
   { id: "home", label: "Home", roles: ["supply", "pharmacist", "procurement", "auditor"] },
@@ -25,12 +27,13 @@ const NAV: { id: ViewId; label: string; roles: Role[] }[] = [
   { id: "events", label: "Alerts", roles: ["supply", "pharmacist", "auditor"] },
   { id: "plans", label: "Plans", roles: ["supply", "pharmacist", "procurement", "auditor"] },
   { id: "approvals", label: "Approvals", roles: ["supply", "pharmacist"] },
+  { id: "orders", label: "Orders", roles: ["supply", "procurement", "auditor"] },
   { id: "drafts", label: "Messages", roles: ["supply", "procurement"] },
   { id: "audit", label: "History", roles: ["supply", "pharmacist", "procurement", "auditor"] },
   { id: "data", label: "Data", roles: ["supply", "auditor"] },
 ];
 
-const HOME: Record<Role, ViewId> = { supply: "board", pharmacist: "approvals", procurement: "drafts", auditor: "audit" };
+const HOME: Record<Role, ViewId> = { supply: "board", pharmacist: "approvals", procurement: "orders", auditor: "audit" };
 const STEP_VIEW: ViewId[] = ["board", "events", "plans", "approvals", "board", "plans", "audit"];
 
 /** Plain-English narration for each demo step: what happened, why it matters, where to look. */
@@ -150,7 +153,14 @@ export function App() {
     if (live.mode === "live" && !new URLSearchParams(window.location.search).get("view")) setView("home");
   }, [live.mode]);
 
+  // Supplier orders for the chosen day: reload after every day run or decision.
+  const ordersStore = useOrders();
+  useEffect(() => {
+    if (live.mode !== "connecting") void refreshOrders(state.live?.asOf);
+  }, [live.mode, state.live]);
+
   const counts: Partial<Record<ViewId, number>> = {
+    orders: pendingCount(ordersStore),
     events: state.events.filter((e) => e.status === "open").length,
     // One decision per plan: count plans, not their options.
     approvals: new Set(state.plans.filter((p) => p.status === "pending-approval").map((p) => (state.live ? p.solverRun : p.id))).size,
@@ -314,6 +324,7 @@ export function App() {
         )}
         {activeView === "plans" && <Plans focusEvent={focusEvent} />}
         {activeView === "approvals" && <Approvals />}
+        {activeView === "orders" && <Orders />}
         {activeView === "drafts" && <Drafts />}
         {activeView === "audit" && <Audit />}
         {activeView === "data" && <DataSources />}

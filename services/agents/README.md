@@ -6,19 +6,20 @@ The AI layer of the drug shortage response platform. Two pipelines live here:
 |---|---|---|---|
 | **Signal → plan** | Anshdeep | `agent.py` | Reads a supplier email, works out which sites run short, proposes verified transfer plans |
 | **Follow-up** | Aryan | `followup.py`, `followup_demo.py` | Watches approved transfers after approval and decides wait / nudge / replan / escalate / close |
+| **Orders** | Aryan | `order_agent.py`, `order_demo.py`, `order_db.py` | Drafts routine reorders and emergency orders, gets approval, places them through a simulated supplier channel, and follows them up until delivered |
 
-Both run on **Amazon Bedrock** (Claude Haiku 4.5 through the Converse API) and both follow the same rules, listed below. Detailed design of the follow-up agent: [`docs/FOLLOW_UP_AGENT.md`](../../docs/FOLLOW_UP_AGENT.md).
+All three run on **Amazon Bedrock** (Claude Haiku 4.5 through the Converse API) and both follow the same rules, listed below. Detailed design: [`docs/FOLLOW_UP_AGENT.md`](../../docs/FOLLOW_UP_AGENT.md), [`docs/ORDER_AGENT.md`](../../docs/ORDER_AGENT.md).
 
 ---
 
-## Design rules (both pipelines)
+## Design rules (all pipelines)
 
 1. **Python does the numbers.** Days of cover, shortfalls, lateness and safety floors are computed in code and handed to the model. The model never does arithmetic that matters.
 2. **The model only does language and judgement.** Reading free text, choosing between options Python allows, explaining, drafting messages.
 3. **Every model output is validated.** Pydantic schema first, then code checks. Bad output gets one retry with feedback, then a rule-based fallback or a `needs_review` result.
 4. **Untrusted text is screened first.** Emails and site replies go through `security.py` before any model sees them. Flagged text never reaches the model.
 5. **Tools are read-only and least-privilege.** Each agent gets only the tools it needs. There is no tool that sends, writes or moves anything.
-6. **Nothing is executed.** Every result has `execution_performed: False`. Humans approve and act.
+6. **Nothing is executed without a person.** Every result has `execution_performed: False`. Humans approve and act. The one exception is the order agent placing an order a person already approved: it goes through `SimulatedSupplierChannel`, which only records it (`sent_via: "simulated"`). There is no real supplier connection.
 
 ---
 
@@ -61,6 +62,21 @@ Run: `python -m services.agents.agent mock/emails/clear.txt`
 
 Data: `mock/followup/transfer_requests.csv`, `mock/followup/replies.json`. Tests: `tests/test_followup.py`.
 
+### Order pipeline (Aryan)
+
+| File | Purpose |
+|---|---|
+| `order_schemas.py` | `SupplierOffer`, `PurchaseOrder`, `SupplierReply`, `SupplierReading`, `OrderDecision`, `OrderAction`. |
+| `order_rules.py` | All deterministic logic: `SupplierCatalog`, stock projection (`cover_days`), routine reorder scan, emergency order option for shortage plans, supplier ranking, order checks, spend limits, tracking facts, hard rules, allowed decisions, fallback, recipients, templates. Thresholds at the top. |
+| `order_agent.py` | `OrderAgent`: draft, approve/reject (people), place, read supplier replies (reader agent), decide grey zones (decision agent), switch supplier, raise supply events. `SimulatedSupplierChannel` records what is sent and plays back scripted replies. |
+| `order_demo.py` | Simulated-clock demo (Nov 15 to 18), offline or `--live`. Logs to `data/orders/`. |
+| `order_db.py` | Same agent on Postgres: catalog loading, routine scan, approve/reject, approved plan options → purchase orders, follow-up runs, audit_log. CLI and `ingestion.workflow orders`. |
+| `order_view.py` | The website's Orders page data (orders, days left, timeline), for the offline export and `GET /api/orders` in `apps/api/main.py`. |
+
+Hooks into the signal pipeline: `agent._order_option()` adds a code-calculated `type: "order"` option (with `orders: [OrderLine]`) to every plan when a supplier catalog exists. `results_store` stores its lines in `plan_action` (`supplier_id`, `to_site`, `units`). `approvals.approve_plan` checks the spend limit and re-checks order lines (`recheck_order`) before approving.
+
+Data: `mock/suppliers.csv`, `mock/supplier_catalog.csv`, `mock/orders/supplier_replies.json`. Tests: `tests/test_orders.py`, `tests/test_orders_db.py`.
+
 ---
 
 ## Setup
@@ -90,6 +106,9 @@ All commands from the repo root.
 # Signal → plan
 .venv/bin/python -m services.agents.agent mock/emails/clear.txt
 
+# Order agent demo: offline, or --live / --trace / --json
+.venv/bin/python -m services.agents.order_demo
+
 # Follow-up demo: offline (no AWS), live (Bedrock), with step trace, or JSON
 .venv/bin/python -m services.agents.followup_demo
 .venv/bin/python -m services.agents.followup_demo --live
@@ -117,5 +136,6 @@ Tests: `tests/test_agent.py` (signal → plan, fake model) and `tests/test_follo
 
 ## Known issues
 
-- Nothing here is connected to the UI yet; there is no API layer.
+- The order agent runs inside the daily run (step 6, `daily_run.py`); the platform API has no login.
+- Supplier ordering is simulated: no EDI, API or email connector (see `docs/ORDER_AGENT.md`).
 - Data comes from CSVs in `mock/`; the database is not wired in.

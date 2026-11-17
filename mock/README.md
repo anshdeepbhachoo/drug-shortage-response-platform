@@ -17,6 +17,7 @@ python make_mock_data.py
 **Never overwrite / never touch:**
 - Protected emails: `clear.txt`, `ambiguous.txt`, `hostile.txt`, `sneaky.txt`
 - Entire `followup/` directory
+- Supplier catalog: `suppliers.csv`, `supplier_catalog.csv`, and the `orders/` directory (order agent; see `docs/ORDER_AGENT.md`)
 
 Do **not** put permanent manual edits in the generated CSVs or generated emails. Change `make_mock_data.py` and regenerate instead.
 

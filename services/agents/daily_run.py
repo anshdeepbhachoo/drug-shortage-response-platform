@@ -16,7 +16,13 @@ Everything a real deployment would do without anyone clicking anything, in order
             always planned the same day; others share MAX_PLANS_PER_DAY.
 4. Reports  Health Canada shortage reports for tracked drugs (shortage_signals.py).
 5. Follow   check approved transfers at FOLLOWUP_HOUR (followup_db.py).
-6. Record   a "Daily run" audit entry summarising the day.
+6. Orders   at ORDERS_HOUR the order agent (order_db.py) turns approved plan
+            order options into purchase orders, places approved orders through the
+            simulated supplier channel, reads that day's scripted supplier replies
+            and follows every open order up; then the reorder scan drafts orders for
+            sites heading under safety stock, for a person to approve. Skipped when
+            no supplier catalog is loaded (order_db load-catalog).
+7. Record   a "Daily run" audit entry summarising the day.
 
 Approvals stay with people. Nothing is sent or executed.
 
@@ -66,6 +72,8 @@ SPIKE_RATIO = 1.25       # usage up 25% on the previous day counts as a spike
 MAX_PLANS_PER_DAY = 3    # stock-watch alerts planned per day; the rest wait
 PERSON_WATCH_DAYS = 14   # a person asking for a plan looks wider: the amber zone too
 FOLLOWUP_HOUR = 18
+ORDERS_HOUR = 20
+SUPPLIER_REPLIES = ROOT / "mock" / "orders" / "supplier_replies.json"
 
 
 def load_inbox(path: Path = INBOX) -> dict[str, list[str]]:
@@ -206,6 +214,26 @@ def _record(engine: Engine, day: date, summary: dict) -> None:
         """), {"day": day.isoformat(), "detail": json.dumps(summary, default=str), "refs": [day.isoformat()]})
 
 
+def run_orders_for_day(engine: Engine, data, day: date, llm=None) -> dict:
+    """The order agent's evening run: follow up and place first, then draft new reorders."""
+
+    from services.agents.order_agent import SimulatedSupplierChannel
+    from services.agents.order_db import load_catalog_from_db, run_orders, scan
+
+    if load_catalog_from_db(engine) is None:
+        return {"skipped": "no supplier catalog loaded"}
+    when = datetime.combine(day, time(ORDERS_HOUR))
+    channel = SimulatedSupplierChannel.from_file(SUPPLIER_REPLIES) if SUPPLIER_REPLIES.is_file() else None
+    actions, raised = run_orders(engine, data, when, channel, llm)
+    drafted = scan(engine, data, when)
+    decisions: dict[str, int] = {}
+    for action in actions:
+        if action.decision != "wait":
+            decisions[action.decision] = decisions.get(action.decision, 0) + 1
+    return {"checked": len(actions), "decisions": decisions, "raised_events": len(raised),
+            "drafted": len(drafted), "drafted_cost": round(sum(o.total_cost for o in drafted), 2)}
+
+
 def run_day(
     write_engine: Engine,
     read_engine: Engine,
@@ -295,6 +323,9 @@ def run_day(
     # 5. Follow-up on approved transfers
     actions = run_followup(write_engine, data, datetime.combine(day, time(FOLLOWUP_HOUR)))
     summary["followup"] = [{"transfer": a.request_id, "decision": a.decision} for a in actions]
+
+    # 6. Supplier orders
+    summary["orders"] = run_orders_for_day(write_engine, data, day, llm if has_model else None)
 
     with read_engine.connect() as conn:
         summary["waiting_for_approval"] = conn.execute(

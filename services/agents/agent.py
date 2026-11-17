@@ -613,6 +613,18 @@ def _plan_for_event(event, assessment, data, llm, today, planning_registry, plan
         if not feedback:
             break
 
+    # An emergency order from another supplier, calculated in code from the
+    # supplier catalog (order_rules.py). Added after the planner's options so
+    # the model never sets order quantities or prices. No catalog -> no option.
+    options = list(plan.options)
+    order_option, order_problems = _order_option(event, data, stock_rows, shortfall, today)
+    if order_option is not None:
+        options.append(order_option)
+        if order_problems:
+            rejected[len(options) - 1] = order_problems
+        else:
+            verified.append(order_option)
+
     return _result(
         "plan_generated" if verified else "no_verified_plan",
         event.reason,
@@ -621,12 +633,32 @@ def _plan_for_event(event, assessment, data, llm, today, planning_registry, plan
         cover_days=cover_days,
         risk_sites=risk_sites,
         shortfall=shortfall,
-        proposed_options=[o.model_dump() for o in plan.options],
+        proposed_options=[o.model_dump() for o in options],
         verified_options=[o.model_dump() for o in verified],
         rejected_options=rejected,
         no_perfect_plan=plan.no_perfect_plan,
         retried_after_rejection=bool(feedback),
     )
+
+
+def _order_option(event, data, stock_rows, shortfall, today):
+    """(PlanOption | None, problems) for an emergency supplier order. Never raises:
+    a missing or broken catalog must not stop transfer planning."""
+
+    from services.agents.order_rules import catalog_for, shortage_order_option
+
+    try:
+        catalog = catalog_for(data)
+        if catalog is None:
+            return None, []
+        drug = data.drug(event.drug_din) or {}
+        return shortage_order_option(
+            event.drug_din, drug.get("name") or event.drug_name, stock_rows, shortfall,
+            data.orders(event.drug_din), catalog, today,
+        )
+    except Exception:  # noqa: BLE001 - logged, planning continues without an order option
+        logger.exception("Order option failed; continuing with transfer options only")
+        return None, []
 
 
 def process_email(email: str, data=None, llm: LLM | None = None, today: date | None = None):

@@ -4,8 +4,10 @@ import { PageHead, Status, formatDays, type Tone } from "../components/ui";
 import { drugById, siteName } from "../data/mock";
 import { lineCoverage, tierFor } from "../lib/risk";
 import { useStore } from "../lib/store";
+import { STATUS_WORDS, money, needsPerson, useOrders } from "../lib/orders";
+import { arrivalOf } from "../components/OrderCharts";
 
-type Go = (view: "hospitals" | "board" | "events" | "approvals" | "audit") => void;
+type Go = (view: "hospitals" | "board" | "events" | "approvals" | "orders" | "audit") => void;
 
 /** Live home: a dashboard of tiles, each a summary that opens the page behind it. */
 export function Home({ go }: { go: Go }) {
@@ -18,6 +20,7 @@ export function Home({ go }: { go: Go }) {
         <StockTile go={go} />
         <ProblemsTile go={go} />
         <ApprovalsTile go={go} />
+        <OrdersTile go={go} />
         <FollowUpTile go={go} />
         <InboxTile go={go} />
       </div>
@@ -198,6 +201,36 @@ function InboxTile({ go }: { go: Go }) {
       <Rows
         empty={arriving.length ? `Arriving next: ${arriving.join(", ")}` : "No emails yet."}
         rows={mail.slice(0, 3).map((m) => ({ key: m.email, text: m.email, right: m.status.replace(/_/g, " ") }))}
+      />
+    </Tile>
+  );
+}
+
+function OrdersTile({ go }: { go: Go }) {
+  const { data, backend } = useOrders();
+  const orders = data.orders;
+  const waiting = orders.filter((o) => o.status === "pending_approval");
+  const open = orders.filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "pending_approval");
+  const person = orders.filter(needsPerson).length;
+  const late = orders.filter((o) => o.status !== "delivered" && o.status !== "cancelled" && arrivalOf(o, data.asOf).late);
+  const urgency = (o: (typeof orders)[number]) => o.daysLeft ?? 999;
+  const top = [...late.sort((a, b) => urgency(a) - urgency(b)), ...waiting.filter((o) => !late.includes(o)).sort((a, b) => urgency(a) - urgency(b))].slice(0, 3);
+  const empty = backend !== "database" ? "Orders API not connected." : data.catalog === false ? "No supplier catalog loaded yet." : "No supplier orders yet. Run a day.";
+  return (
+    <Tile
+      title="Supplier orders"
+      value={waiting.length}
+      tone={late.length || person ? "crit" : waiting.length ? "warn" : orders.length ? "good" : "neutral"}
+      sub={`waiting for approval (${money(waiting.reduce((t, o) => t + o.totalCost, 0))}) · ${open.length} on the way · ${late.length} too late`}
+      onOpen={() => go("orders")}
+    >
+      <Rows
+        empty={empty}
+        rows={top.map((o) => ({
+          key: o.id,
+          text: <><b>{o.drug.split(" ")[0]}</b> for {o.siteName}</>,
+          right: arrivalOf(o, data.asOf).late ? <Status tone="crit">too late</Status> : STATUS_WORDS[o.status].toLowerCase(),
+        }))}
       />
     </Tile>
   );
