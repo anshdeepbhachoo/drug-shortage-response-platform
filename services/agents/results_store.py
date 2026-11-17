@@ -37,6 +37,7 @@ def _actions(plan_id: str, result: dict) -> list[dict]:
     for index, option in enumerate(result.get("proposed_options", [])):
         common = {
             "plan_id": plan_id,
+            "option_index": index + 1,
             "type": option["type"],
             "description": option["description"],
             "reasoning": option.get("reasoning"),
@@ -107,8 +108,9 @@ def save_pipeline_result(
             conn.execute(
                 text(
                     """
-                    INSERT INTO plan (plan_id, event_id, status, no_perfect_plan, source)
-                    VALUES (:plan_id, :event_id, :status, :no_perfect_plan, 'planning_agent')
+                    INSERT INTO plan (plan_id, event_id, status, no_perfect_plan, source, detail)
+                    VALUES (:plan_id, :event_id, :status, :no_perfect_plan, 'planning_agent',
+                            CAST(:detail AS jsonb))
                     """
                 ),
                 {
@@ -116,15 +118,18 @@ def save_pipeline_result(
                     "event_id": saved["event_id"],
                     "status": "pending_approval" if result.get("verified_options") else "proposed",
                     "no_perfect_plan": bool(result.get("no_perfect_plan")),
+                    # What the options were checked against; approval re-checks with current stock.
+                    "detail": json.dumps({key: result.get(key) for key in
+                                          ("shortfall", "cover_days", "delay_days", "risk_sites")}),
                 },
             )
             for action in _actions(saved["plan_id"], result):
                 conn.execute(
                     text(
                         """
-                        INSERT INTO plan_action (action_id, plan_id, type, description, reasoning,
+                        INSERT INTO plan_action (action_id, plan_id, option_index, type, description, reasoning,
                                                  from_site, to_site, units, verified, problems)
-                        VALUES (:action_id, :plan_id, :type, :description, :reasoning,
+                        VALUES (:action_id, :plan_id, :option_index, :type, :description, :reasoning,
                                 :from_site, :to_site, :units, :verified, CAST(:problems AS jsonb))
                         """
                     ),
