@@ -1,2 +1,7 @@
-# Keep shell scripts LF so Docker init scripts run on Windows checkouts.
+# Keep line endings LF so Docker init scripts and generated data match across Windows and macOS checkouts.
 *.sh text eol=lf
+*.csv text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.py text eol=lf

@@ -1,0 +1,4 @@
+From: billing@apexsterile.example
+Subject: November statement available
+
+Your November account statement is ready in the supplier portal. No product availability changes are included in this notice.
