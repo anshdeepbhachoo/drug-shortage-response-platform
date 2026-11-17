@@ -826,3 +826,201 @@ details.sources summary::before, details.why summary::after { font-family: var(-
 .role-chip.in { background: var(--good-wash); color: var(--good-text); }
 .role-chip.out { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
 .overdue { margin-left: 4px; font-size: 12px; font-weight: 600; padding: 1px 6px; border-radius: 2px; background: var(--crit-wash); color: var(--crit-text); }
+
+/* ==================================================================
+   Signal Review + Audit Trail polish.
+   Same blue Fluent theme, with three additions:
+     1. a faint pink wash behind the page (--blush tokens),
+     2. Inter as the body font for cleaner, more even text,
+     3. icons, diagrams and a signal map on the two pages.
+================================================================== */
+:root {
+  --sans: "Inter", "Segoe UI", "Open Sans", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --page: #f8f3f5;            /* neutral grey nudged towards pink */
+  --blush: #fcebf2;           /* soft pink fill for icon tiles, highlights */
+  --blush-2: #fff7fa;         /* paper colour for the email body */
+  --blush-line: #f3d3e1;
+  --blush-ink: #a3366a;       /* readable pink text / icon colour */
+  --paper-ink: #3b3a39;
+  font-family: var(--sans);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    --page: #1d1a1c;
+    --blush: rgba(236, 120, 170, 0.12);
+    --blush-2: #2a2528;
+    --blush-line: rgba(236, 120, 170, 0.26);
+    --blush-ink: #f29cc4;
+    --paper-ink: #e6e1e3;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #1d1a1c;
+  --blush: rgba(236, 120, 170, 0.12);
+  --blush-2: #2a2528;
+  --blush-line: rgba(236, 120, 170, 0.26);
+  --blush-ink: #f29cc4;
+  --paper-ink: #e6e1e3;
+}
+/* The pink is a gentle glow in the top corner, not a flat fill. */
+body { background: radial-gradient(1200px 520px at 100% -10%, var(--blush), transparent 70%), var(--page); background-attachment: fixed; }
+
+/* Icons sit on the text baseline wherever they are used inline. */
+.icon { flex: none; vertical-align: -0.18em; }
+.card-head h3 .icon, .inbox-head h3 .icon, h4 .icon, .label .icon { color: var(--blush-ink); margin-right: 4px; }
+.callout > .icon { margin-top: 2px; }
+.callout.crit > .icon { color: var(--crit-text); }
+.callout.good > .icon { color: var(--good-text); }
+
+/* ---------- Info notes: short explanation cards under the page title ---------- */
+.info-notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: -4px; }
+.info-note { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.info-ico { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; background: var(--blush); color: var(--blush-ink); flex: none; }
+.info-note h4 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.info-note p { font-size: 13px; line-height: 1.55; color: var(--ink-2); max-width: 46ch; }
+.page-head .lead { font-size: 14px; color: var(--muted); }
+
+/* ---------- Signal Review: mail-client layout (inbox | reader) ---------- */
+.mailbox { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.inbox { position: sticky; top: 16px; overflow: hidden; }
+.inbox-head { display: flex; flex-direction: column; gap: 10px; padding: 16px 16px 12px; border-bottom: 1px solid var(--line); }
+.inbox-head h3 { font-size: 15px; font-weight: 600; }
+.mail-list { max-height: 640px; overflow-y: auto; }
+.mail { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; padding: 12px 16px; align-items: start; }
+.mail:hover { background: var(--surface-2); }
+.mail.active { background: var(--blush-2); box-shadow: inset 3px 0 0 var(--blush-ink); }
+.mail-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mail-from { font-size: 12px; color: var(--muted); font-weight: 500; }
+.mail strong { font-size: 13.5px; line-height: 1.35; font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.mail.quarantined strong { color: var(--ink-2); }
+.inbox-empty { padding: 16px; }
+
+/* Round sender avatars: blue for accepted mail, red shield for held mail. */
+.avatar { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; font-size: 12px; font-weight: 600; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--accent); }
+.avatar.quarantined { background: var(--crit-wash); color: var(--crit-text); }
+.avatar.lg { width: 44px; height: 44px; font-size: 14px; }
+
+/* The reader: bigger type and calmer spacing so long notices are easy on the eye. */
+.reader { overflow: hidden; }
+.reader-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 20px 24px 16px; border-bottom: 1px solid var(--line); }
+.reader-title h2 { font-size: 19px; font-weight: 600; line-height: 1.35; letter-spacing: -0.01em; }
+.reader-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; font-size: 13px; color: var(--muted); }
+.reader-meta b { color: var(--ink); font-weight: 600; }
+.mail-paper { margin: 20px 24px 0; padding: 22px 26px; white-space: pre-wrap; font-size: 15.5px; line-height: 1.75; color: var(--paper-ink); background: var(--blush-2); border: 1px solid var(--blush-line); border-radius: 6px; max-width: 72ch; }
+.mail-paper mark, .paper-note mark { background: color-mix(in srgb, #ffd54f 55%, transparent); color: inherit; padding: 1px 3px; border-radius: 3px; }
+.paper-note { margin: 8px 24px 0; font-size: 12.5px; color: var(--muted); }
+.reader-section { padding: 18px 24px 0; display: flex; flex-direction: column; gap: 10px; }
+.reader-section:last-of-type { padding-bottom: 20px; }
+.reader-section h4 { font-size: 14px; font-weight: 600; }
+.reader .read-out > div { background: var(--surface-2); border: 1px solid var(--line); padding: 10px 12px; }
+.reader .read-out .label { display: flex; align-items: center; gap: 2px; }
+.reader .confidence { font-size: 18px; }
+.reader .meter { margin-bottom: 26px; }
+
+/* Two cards side by side with equal width (actions | map). */
+.grid-2.even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* ---------- Action flow diagram: received → read → checked → outcome ---------- */
+.flow { list-style: none; margin: 4px 0 16px; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
+.flow-step { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 0 4px; }
+/* Connector line between steps. */
+.flow-step + .flow-step::before { content: ""; position: absolute; top: 20px; right: calc(50% + 22px); width: calc(100% - 44px); height: 2px; background: var(--good); }
+.flow-step.stop::before, .flow-step.wait::before { background: repeating-linear-gradient(90deg, var(--crit) 0 6px, transparent 6px 10px); }
+.flow-ico { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--good-wash); color: var(--good-text); border: 2px solid var(--good); }
+.flow-step.stop .flow-ico { background: var(--crit-wash); color: var(--crit-text); border-color: var(--crit); }
+.flow-step.wait .flow-ico { background: var(--warn-wash); color: var(--warn-text); border-color: var(--warn); }
+.flow-title { font-size: 13px; font-weight: 600; margin-top: 2px; }
+.flow-note { font-size: 12px; color: var(--muted); }
+
+/* Action log under the diagram. */
+.action-log { list-style: none; margin: 0 0 10px; padding: 0; border-top: 1px solid var(--line); }
+.action-log li { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.action-time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.action-detail { display: block; color: var(--ink-2); margin-top: 1px; line-height: 1.5; }
+.action-empty { margin-bottom: 10px; }
+
+/* ---------- Signal map (SVG schematic) ---------- */
+.signal-map svg { width: 100%; height: auto; display: block; color: var(--ink-2); }
+.map-node { fill: var(--surface-2); stroke: var(--axis); stroke-width: 1.5; }
+.map-node.good { fill: var(--good-wash); stroke: var(--good); }
+.map-node.crit { fill: var(--crit-wash); stroke: var(--crit); }
+.map-edge { fill: none; stroke: var(--line); stroke-width: 2; }
+.map-edge.on { stroke: var(--accent); }
+.map-edge.hit { stroke: var(--blush-ink); stroke-width: 2.5; }
+.map-edge.off { stroke-dasharray: 3 5; opacity: 0.6; }
+.map-edge.stop { stroke: var(--crit); stroke-dasharray: 5 4; }
+.map-pill { fill: var(--surface); stroke: var(--line); }
+.map-site.hit .map-pill { fill: var(--blush); stroke: var(--blush-ink); }
+.map-site.hit { color: var(--blush-ink); }
+.map-label { font-size: 12px; fill: var(--ink); font-family: var(--sans); }
+.map-label.muted { fill: var(--muted); }
+.map-label.crit { fill: var(--crit-text); font-weight: 600; }
+.map-site.hit .map-label { font-weight: 600; }
+.map-legend { margin-top: 8px; font-size: 12px; }
+.map-legend .line { background: var(--line); }
+.map-legend .line.hit { background: var(--blush-ink); }
+.map-legend .line.stop { background: var(--crit); }
+
+/* ---------- Evidence by alert: grid of small cards ---------- */
+.evidence-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.evidence-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); min-width: 0; }
+.evidence-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.55; color: var(--ink-2); }
+
+/* ---------- Audit Trail: actor flow diagram ---------- */
+.actor-flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; }
+.actor-flow li { position: relative; }
+/* Arrow between stages. */
+.actor-flow li + li::before { content: "→"; position: absolute; left: -22px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 16px; }
+.actor-node { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.actor-node:hover { border-color: var(--blush-ink); }
+.actor-node.on { border-color: var(--blush-ink); box-shadow: inset 0 0 0 1px var(--blush-ink), var(--shadow); background: var(--blush-2); }
+.actor-ico { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; }
+.actor-node.system .actor-ico { background: var(--surface-2); color: var(--ink-2); }
+.actor-node.agent .actor-ico { background: var(--blush); color: var(--blush-ink); }
+.actor-node.solver .actor-ico { background: var(--warn-wash); color: var(--warn-text); }
+.actor-node.people .actor-ico { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--accent); }
+.actor-text { display: flex; flex-direction: column; min-width: 0; }
+.actor-title { font-weight: 600; font-size: 14px; }
+.actor-note { font-size: 12px; color: var(--muted); }
+.actor-count { font-size: 22px; font-weight: 600; }
+
+/* ---------- Audit Trail: timeline ---------- */
+.tl-time { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); padding: 14px 20px 4px; }
+.tl-item { grid-template-columns: 28px minmax(0, 1fr); gap: 12px; padding: 10px 20px; }
+.tl-item:hover { background: var(--blush-2); }
+.who-dot { width: 28px; height: 28px; }
+.who-dot.system { background: var(--surface-2); color: var(--ink-2); }
+.who-dot.agent { background: var(--blush); color: var(--blush-ink); border-color: var(--blush-line); }
+.who-dot.solver { background: var(--warn-wash); color: var(--warn-text); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.who-dot.human { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tl-body { min-width: 0; }
+.tl-item .what { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 14px; }
+.tl-action { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); }
+.tl-object { font-size: 12.5px; color: var(--muted); }
+.tl-item .detail { font-size: 13.5px; line-height: 1.55; color: var(--ink-2); margin-top: 3px; max-width: 64ch; }
+.tl-empty { padding: 16px 20px; }
+
+/* ---------- Audit Trail: data lineage chain with icon nodes ---------- */
+.trace-step { grid-template-columns: 22px minmax(0, 1fr); }
+.trace-step::before { left: 10px; top: 24px; }
+.trace-step .node { display: grid; place-items: center; width: 22px; height: 22px; margin-top: 0; color: var(--muted); }
+.trace-step.root .node { color: var(--accent-ink); }
+.trace-step .t { font-size: 14px; font-weight: 500; }
+.trace-result { font-size: 24px; font-weight: 600; }
+
+/* Stack everything on narrow screens. */
+@media (max-width: 1000px) {
+  .mailbox, .grid-2.even { grid-template-columns: 1fr; }
+  .inbox { position: static; }
+  .mail-list { max-height: 320px; }
+  .actor-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .actor-flow li:nth-child(odd)::before { display: none; }
+}
+@media (max-width: 560px) {
+  .actor-flow { grid-template-columns: 1fr; gap: 10px; }
+  .actor-flow li::before { display: none; }
+  .mail-paper { margin: 16px 16px 0; padding: 16px; font-size: 15px; }
+  .reader-head, .reader-section { padding-left: 16px; padding-right: 16px; }
+  .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 14px; }
+  .flow-step:nth-child(3)::before { display: none; }
+}
