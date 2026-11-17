@@ -12,8 +12,10 @@ Bad records go to quarantine with a code (DIN_FORMAT, MISSING_BRAND,
 STRENGTH_NEGATIVE, UNKNOWN_STATUS, ...), never silently dropped.
 
 Usage:
-  python -m ingestion.dpd_ingest --din 02242974 --din 00326925
-  python -m ingestion.dpd_ingest --din-file dins.txt     # one DIN per line
+  python -m ingestion.dpd_ingest --din 00693820 --din 02242974
+  python -m ingestion.dpd_ingest --din-file dins.txt          # one DIN per line
+  python -m ingestion.dpd_ingest --from-shortages --batch-size 50 --max-batches 0
+  python -m ingestion.dpd_ingest --retry-queue                # only retry failed detail lookups
 """
 
 from __future__ import annotations
@@ -273,12 +275,22 @@ def _write_children(conn: Connection, endpoint: str, drug_code: int, records: li
 # Phases
 # ---------------------------------------------------------
 
-def load_products(engine: Engine, client: DpdClient, run_id: int, dins: list[str], stats: dict) -> list[int]:
-    drug_codes = []
-    for din in dins:
-        records = client.get("drugproduct", din=din)
+def load_products(
+    engine: Engine,
+    client: DpdClient,
+    run_id: int,
+    dins: list[str],
+    stats: dict,
+    drug_codes: list[int] = (),
+) -> list[int]:
+    """Fetch products by DIN (and by DPD drug_code for reports with no DIN)."""
+
+    lookups = [("din", din) for din in dins] + [("id", code) for code in drug_codes]
+    loaded = []
+    for key, value in lookups:
+        records = client.get("drugproduct", **{key: value})
         with engine.begin() as conn:
-            snapshot_id = save_snapshot(conn, run_id, SOURCE, "/drugproduct", {"din": din}, records)
+            snapshot_id = save_snapshot(conn, run_id, SOURCE, "/drugproduct", {key: value}, records)
             for record in records:
                 stats["rows_in"] += 1
                 row, problem = validate_product(record)
@@ -289,9 +301,11 @@ def load_products(engine: Engine, client: DpdClient, run_id: int, dins: list[str
                 conn.execute(text(UPSERT_PRODUCT), {**row, "snapshot_id": snapshot_id})
                 for endpoint in CHILD_ENDPOINTS:
                     conn.execute(text(ENQUEUE), {"drug_code": row["drug_code"], "endpoint": endpoint})
-                drug_codes.append(row["drug_code"])
+                loaded.append(row["drug_code"])
                 stats["rows_ok"] += 1
-    return drug_codes
+        if not records:
+            stats["not_found"] += 1
+    return loaded
 
 
 def process_queue(engine: Engine, client: DpdClient, run_id: int, stats: dict, limit: int | None = None) -> None:
@@ -329,36 +343,152 @@ def process_queue(engine: Engine, client: DpdClient, run_id: int, stats: dict, l
             stats["queue_failures"] += 1
 
 
-def run_ingest(engine: Engine, client: DpdClient, dins: list[str]) -> dict[str, int]:
-    """Load products for the given DINs, then enrich them (and any pending queue items)."""
+def _new_stats() -> dict[str, int]:
+    return {"rows_in": 0, "rows_ok": 0, "rows_quarantined": 0, "queue_failures": 0, "not_found": 0}
 
-    stats = {"rows_in": 0, "rows_ok": 0, "rows_quarantined": 0, "queue_failures": 0}
+
+def run_ingest(engine: Engine, client: DpdClient, dins: list[str], drug_codes: list[int] = ()) -> dict[str, int]:
+    """One run: load these products, then work the enrichment queue (including old retries).
+
+    With no DINs or drug codes it only works the queue.
+    """
+
+    stats = _new_stats()
     run_id = start_run(engine, SOURCE)
     try:
-        load_products(engine, client, run_id, dins, stats)
+        load_products(engine, client, run_id, dins, stats, drug_codes)
         process_queue(engine, client, run_id, stats)
     except Exception as error:
         finish_run(engine, run_id, "failed", stats["rows_in"], stats["rows_ok"], stats["rows_quarantined"],
                    error=f"{type(error).__name__}: {error}")
         raise
 
+    notes = []
+    if stats["queue_failures"]:
+        notes.append(f"{stats['queue_failures']} enrichment item(s) will be retried")
+    if stats["not_found"]:
+        notes.append(f"{stats['not_found']} lookup(s) found nothing in DPD")
     finish_run(engine, run_id, "succeeded", stats["rows_in"], stats["rows_ok"], stats["rows_quarantined"],
-               error=f"{stats['queue_failures']} enrichment item(s) will be retried" if stats["queue_failures"] else None)
+               error="; ".join(notes) or None)
     return stats
+
+
+# ---------------------------------------------------------
+# Shortage-driven loading: only fetch drugs that are in shortage
+# ---------------------------------------------------------
+
+DEFAULT_STATUSES = ("active_confirmed",)
+
+
+def pick_from_shortages(
+    engine: Engine,
+    limit: int,
+    stale_days: int = 7,
+    statuses: tuple[str, ...] | None = DEFAULT_STATUSES,
+    tier3_only: bool = False,
+    exclude: set = frozenset(),
+) -> tuple[list[str], list[int]]:
+    """Next batch of drugs to fetch: in shortage_report, and not loaded (or loaded > stale_days ago).
+
+    Tier 3 shortages first, then the most recently updated. Reports with no DIN
+    are looked up by their DPD drug_code. statuses=None means any status.
+    """
+
+    rows = None
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT s.din, CASE WHEN s.din IS NULL THEN s.drug_code END AS drug_code
+            FROM shortage_report s
+            LEFT JOIN drug_product d
+                   ON (s.din IS NOT NULL AND d.din = s.din)
+                   OR (s.din IS NULL AND d.drug_code = s.drug_code)
+            WHERE (s.din IS NOT NULL OR s.drug_code IS NOT NULL)
+              AND (d.drug_code IS NULL OR d.last_seen_at < now() - make_interval(days => :stale_days))
+              AND (CAST(:any_status AS boolean) OR s.status = ANY(CAST(:statuses AS text[])))
+              AND (NOT CAST(:tier3_only AS boolean) OR s.tier3)
+            GROUP BY 1, 2
+            ORDER BY bool_or(COALESCE(s.tier3, FALSE)) DESC, max(s.updated_date) DESC NULLS LAST, 1, 2
+        """), {
+            "stale_days": stale_days,
+            "any_status": statuses is None,
+            "statuses": list(statuses or []),
+            "tier3_only": tier3_only,
+        }).all()
+
+    dins, codes = [], []
+    for din, drug_code in rows:
+        key = din or drug_code
+        if key in exclude:
+            continue
+        if len(dins) + len(codes) >= limit:
+            break
+        (dins if din else codes).append(key)
+    return dins, codes
+
+
+def run_from_shortages(
+    engine: Engine,
+    client: DpdClient,
+    batch_size: int = 50,
+    max_batches: int | None = 1,
+    stale_days: int = 7,
+    statuses: tuple[str, ...] | None = DEFAULT_STATUSES,
+    tier3_only: bool = False,
+    log=lambda message: None,
+) -> dict[str, int]:
+    """Load DPD data for drugs in shortage, batch by batch. Each batch is its own ingestion_run.
+
+    max_batches=None keeps going until nothing is left. Drugs DPD doesn't know
+    are tried once per call, so they can't loop forever.
+    """
+
+    totals = {**_new_stats(), "batches": 0, "drugs": 0}
+    attempted: set = set()
+
+    while max_batches is None or totals["batches"] < max_batches:
+        dins, codes = pick_from_shortages(engine, batch_size, stale_days, statuses, tier3_only, attempted)
+        if not dins and not codes and totals["batches"]:
+            break
+
+        stats = run_ingest(engine, client, dins, codes)
+        attempted.update(dins, codes)
+        totals["batches"] += 1
+        totals["drugs"] += len(dins) + len(codes)
+        for key, value in stats.items():
+            totals[key] += value
+        log(f"batch {totals['batches']}: {len(dins) + len(codes)} drug(s), ok={stats['rows_ok']}, "
+            f"quarantined={stats['rows_quarantined']}, not_found={stats['not_found']}")
+
+        if not dins and not codes:
+            break  # nothing in shortage needs loading; the run above only worked the queue
+
+    totals["remaining"] = sum(len(part) for part in pick_from_shortages(
+        engine, 10**6, stale_days, statuses, tier3_only, attempted))
+    return totals
 
 
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
-    parser = argparse.ArgumentParser(description="Load Health Canada DPD products for our drugs")
-    parser.add_argument("--din", action="append", default=[], help="DIN to load (repeatable)")
-    parser.add_argument("--din-file", type=Path, help="File with one DIN per line")
+    parser = argparse.ArgumentParser(description="Load Health Canada DPD products")
+    source = parser.add_argument_group("which drugs (pick one)")
+    source.add_argument("--din", action="append", default=[], help="DIN to load (repeatable)")
+    source.add_argument("--din-file", type=Path, help="File with one DIN per line")
+    source.add_argument("--from-shortages", action="store_true", help="Drugs in shortage_report not loaded recently")
+    source.add_argument("--retry-queue", action="store_true", help="Only retry pending enrichment items")
+    batch = parser.add_argument_group("--from-shortages options")
+    batch.add_argument("--batch-size", type=int, default=50)
+    batch.add_argument("--max-batches", type=int, default=1, help="0 = keep going until done")
+    batch.add_argument("--stale-days", type=int, default=7, help="Re-fetch drugs loaded longer ago than this")
+    batch.add_argument("--status", action="append", help=f"Shortage status to include (default: {DEFAULT_STATUSES[0]})")
+    batch.add_argument("--any-status", action="store_true", help="Include every shortage status")
+    batch.add_argument("--tier3-only", action="store_true")
     args = parser.parse_args(argv)
 
     raw = list(args.din)
     if args.din_file:
         raw += [line.strip() for line in args.din_file.read_text().splitlines() if line.strip()]
-    if not raw:
-        parser.error("give at least one --din or a --din-file")
+    if sum([bool(raw), args.from_shortages, args.retry_queue]) != 1:
+        parser.error("choose one of: --din/--din-file, --from-shortages, --retry-queue")
 
     dins = [normalize_din(d) for d in raw]
     if None in dins:
@@ -368,15 +498,27 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         with DpdClient() as client:
-            stats = run_ingest(get_engine(), client, dins)
+            engine = get_engine()
+            if args.from_shortages:
+                statuses = None if args.any_status else tuple(args.status or DEFAULT_STATUSES)
+                stats = run_from_shortages(
+                    engine, client, args.batch_size, args.max_batches or None, args.stale_days,
+                    statuses, args.tier3_only, log=print,
+                )
+            else:
+                stats = run_ingest(engine, client, dins)
     except (DpdAPIError, RuntimeError) as error:
         print(f"DPD ingest failed: {error}", file=sys.stderr)
         return 1
 
-    print(
+    summary = (
         f"DPD ingest succeeded: in={stats['rows_in']} ok={stats['rows_ok']} "
-        f"quarantined={stats['rows_quarantined']} retry_later={stats['queue_failures']}"
+        f"quarantined={stats['rows_quarantined']} retry_later={stats['queue_failures']} "
+        f"not_found={stats['not_found']}"
     )
+    if args.from_shortages:
+        summary += f" batches={stats['batches']} remaining={stats['remaining']}"
+    print(summary)
     return 0
 
 
