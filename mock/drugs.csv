@@ -9,3 +9,15 @@ din,name,criticality
 99000008,Norepinephrine 4 mg/4 mL vial,critical
 99000009,Vancomycin 1 g vial,medium
 99000010,Dexamethasone 4 mg/mL vial,medium
+99000011,Epinephrine 1 mg/mL ampule,critical
+99000012,Propofol 10 mg/mL vial,high
+99000013,Fentanyl 50 mcg/mL ampule,critical
+99000014,Morphine 10 mg/mL ampule,high
+99000015,Piperacillin-Tazobactam 3.375 g vial,high
+99000016,Ceftriaxone 1 g vial,medium
+99000017,Amiodarone 150 mg/3 mL ampule,critical
+99000018,Potassium Chloride 2 mEq/mL vial,high
+99000019,Normal Saline 0.9% 1000 mL bag,medium
+99000020,Acetaminophen 10 mg/mL IV bag,medium
+99000021,Methotrexate 25 mg/mL vial,critical
+99000022,Filgrastim 300 mcg syringe,high
