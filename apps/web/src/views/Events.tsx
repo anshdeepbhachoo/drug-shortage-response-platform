@@ -82,14 +82,14 @@ export function Events({ openPlan }: { openPlan?: (eventId: string) => void } = 
       <PageHead
         label="Signal Review"
         title={state.live ? "Signal Review" : "What came in, and what the AI made of it"}
-        lead={`${state.emails.length} supplier email${state.emails.length === 1 ? "" : "s"} received · ${accepted} accepted · ${blocked} held for a person`}
+        lead={`${state.emails.length} supplier email${state.emails.length === 1 ? "" : "s"} received · ${accepted} accepted · ${blocked} blocked and sent to a person`}
       />
 
       {/* Three short notes instead of one long paragraph: what this page is and how to use it. */}
       <InfoNotes
         items={[
           { icon: "mail-open", title: "Read the original", text: "Each supplier email is shown exactly as it arrived. The sentence the AI relied on is highlighted." },
-          { icon: "shield", title: "Checked before use", text: `The AI only returns a summary. It is used automatically at ${Math.round(AUTO_ACCEPT * 100)}% confidence or more; anything odd goes to a person.` },
+          { icon: "shield", title: "Checked before use", text: `The AI only returns a summary. It is used automatically at ${Math.round(AUTO_ACCEPT * 100)}% confidence or more; anything odd is blocked and sent to a person.` },
           { icon: "route", title: "See what happened next", text: "Below each email: the steps the platform took and the hospitals the signal reached." },
         ]}
       />
@@ -109,7 +109,7 @@ export function Events({ openPlan }: { openPlan?: (eventId: string) => void } = 
                   [
                     ["all", "All", state.emails.length],
                     ["accepted", "Accepted", accepted],
-                    ["quarantined", "Held", blocked],
+                    ["quarantined", "Blocked", blocked],
                   ] as const
                 ).map(([id, label, n]) => (
                   <button key={id} className={filter === id ? "active" : ""} aria-pressed={filter === id} onClick={() => setFilter(id)}>
@@ -127,10 +127,10 @@ export function Events({ openPlan }: { openPlan?: (eventId: string) => void } = 
                   <span className="mail-text">
                     <span className="mail-from">{senderName(e.from)}</span>
                     <strong>{e.subject}</strong>
-                    <span className="meta">
-                      {timeLabel(e.atMin)} · {e.outcome === "accepted" ? "Accepted" : "Held for review"}
-                    </span>
+                    <span className="meta">{timeLabel(e.atMin)}</span>
                   </span>
+                  {/* Original status cue: green ✓ Accepted / red ✕ Blocked. */}
+                  <Status tone={e.outcome === "accepted" ? "good" : "crit"}>{e.outcome === "accepted" ? "Accepted" : "Blocked"}</Status>
                 </button>
               ))}
               {inbox.length === 0 && <p className="small muted inbox-empty">Nothing in this view.</p>}
@@ -237,7 +237,7 @@ function Reader({ email, live }: { email: Email; live: boolean }) {
             </span>
           </div>
         </div>
-        <Status tone={ok ? "good" : "crit"}>{ok ? "Accepted" : "Held"}</Status>
+        <Status tone={ok ? "good" : "crit"}>{ok ? "Accepted" : "Blocked"}</Status>
       </header>
 
       {/* The email body, as received. */}
@@ -286,9 +286,11 @@ function Reader({ email, live }: { email: Email; live: boolean }) {
         <Meter value={x.confidence} threshold={AUTO_ACCEPT} thresholdLabel="85%: accepted automatically" />
         {x.flags.length > 0 ? (
           <div className="callout crit">
-            <Icon name="shield-x" size={18} />
+            <span className="ico" aria-hidden>
+              ✕
+            </span>
             <div>
-              <strong>Held and sent to a person to review</strong>
+              <strong>Blocked and sent to a person to review</strong>
               <ul>
                 {x.flags.map((f) => (
                   <li key={f}>{f}</li>
@@ -298,10 +300,12 @@ function Reader({ email, live }: { email: Email; live: boolean }) {
           </div>
         ) : ok ? (
           <div className="callout good">
-            <Icon name="check" size={18} />
+            <span className="ico" aria-hidden>
+              ✓
+            </span>
             <div>
               <strong>Accepted and turned into an alert</strong>
-              <span className="ink-2">{x.drugMatch}. Stock numbers were recalculated straight away.</span>
+              <span className="ink-2">Matched an open order by drug name and strength. Stock numbers were recalculated straight away.</span>
             </div>
           </div>
         ) : null}
@@ -321,13 +325,13 @@ function Reader({ email, live }: { email: Email; live: boolean }) {
 ---------------------------------------------------------------- */
 function ActionFlow({ email, event, hasPlan }: { email: Email; event?: SupplyEvent; hasPlan: boolean }) {
   const ok = email.outcome === "accepted";
-  const steps: { icon: IconName; title: string; note: string; state: "done" | "stop" | "wait" }[] = [
+  const steps: { icon: IconName; title: string; note: string; state: "done" | "stop" }[] = [
     { icon: "mail", title: "Received", note: timeLabel(email.atMin), state: "done" },
     { icon: "sparkle", title: "Read by AI", note: `${Math.round(email.extraction.confidence * 100)}% sure`, state: "done" },
     { icon: ok ? "shield" : "shield-x", title: "Safety check", note: ok ? "Passed" : `${email.extraction.flags.length || 1} issue${email.extraction.flags.length === 1 ? "" : "s"}`, state: ok ? "done" : "stop" },
     ok
       ? { icon: "alert", title: "Alert created", note: event ? (hasPlan ? "Plan proposed" : "Being assessed") : "Alert raised", state: "done" }
-      : { icon: "user", title: "Held for a person", note: "Not used until reviewed", state: "wait" },
+      : { icon: "user", title: "Sent to a person", note: "Blocked until reviewed", state: "stop" },
   ];
   return (
     <ol className="flow" aria-label="What happened to this email">
@@ -421,7 +425,7 @@ function SignalMap({ email, event, sites }: { email: Email; event?: SupplyEvent;
         {!ok && (
           <g transform={`translate(${nodes.screen.x},${H - 18})`}>
             <text textAnchor="middle" className="map-label crit">
-              Held for a person
+              Blocked: sent to a person
             </text>
           </g>
         )}
