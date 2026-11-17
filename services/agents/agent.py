@@ -517,8 +517,16 @@ def _pipeline(email: str, data, llm: LLM | None, today: date):
     return _plan_for_event(event, assessment, data, llm, today, planning_registry)
 
 
-def _plan_for_event(event, assessment, data, llm, today, planning_registry):
-    """Risk calculation -> planning agent -> transfer checks, for an accepted supply event."""
+def _plan_for_event(event, assessment, data, llm, today, planning_registry, planner=None, restore=False):
+    """Risk calculation -> planning agent -> transfer checks, for an accepted supply event.
+
+    planner: optional replacement for the planning agent, called as
+    planner(event=..., stock_rows=..., data=..., delay_days=..., cover_days=...,
+    risk_sites=..., shortfall=...) and returning a PlanSet (see rules_planner.py).
+    Its options go through exactly the same transfer checks.
+    restore: the event has no supplier delay; plan to restore delay_weeks of
+    cover (see risk.cover_days_by_site).
+    """
 
     if data.drug(event.drug_din) is None:
         return _result(
@@ -539,7 +547,7 @@ def _plan_for_event(event, assessment, data, llm, today, planning_registry):
     delay_days = math.ceil(event.delay_weeks * 7)
 
     cover_days = cover_days_by_site(
-        stock_rows, data.orders(event.drug_din), delay_days, today
+        stock_rows, data.orders(event.drug_din), delay_days, today, restore=restore
     )
 
     risk_sites, shortfall = calculate_site_risk(stock_rows, cover_days)
@@ -561,16 +569,20 @@ def _plan_for_event(event, assessment, data, llm, today, planning_registry):
     feedback = None
 
     for attempt in range(2):
-        plan = plan_response(
-            event,
-            delay_days,
-            cover_days,
-            risk_sites,
-            shortfall,
-            planning_registry,
-            feedback,
-            llm=llm,
-        )
+        if planner is not None:
+            plan = planner(event=event, stock_rows=stock_rows, data=data, delay_days=delay_days,
+                           cover_days=cover_days, risk_sites=risk_sites, shortfall=shortfall)
+        else:
+            plan = plan_response(
+                event,
+                delay_days,
+                cover_days,
+                risk_sites,
+                shortfall,
+                planning_registry,
+                feedback,
+                llm=llm,
+            )
 
         verified, rejected = filter_options(
             options=plan.options,
@@ -640,7 +652,8 @@ def process_email(email: str, data=None, llm: LLM | None = None, today: date | N
         return _result("error", f"{type(error).__name__}: {error}")
 
 
-def process_event(event: SupplyEvent, data=None, llm: LLM | None = None, today: date | None = None):
+def process_event(event: SupplyEvent, data=None, llm: LLM | None = None, today: date | None = None, planner=None,
+                  restore: bool = False):
     """
     A supply event that is already structured (e.g. from a Health Canada
     shortage report) -> Python risk calculation -> planning agent -> Python
@@ -648,6 +661,9 @@ def process_event(event: SupplyEvent, data=None, llm: LLM | None = None, today: 
 
     The event must already say next_action="plan"; anything else is returned
     for review without planning.
+
+    restore=True: delay_weeks is the cover to restore, not a supplier delay
+    (stock watch and person-raised alerts).
     """
 
     assessment = event.model_dump()
@@ -657,7 +673,8 @@ def process_event(event: SupplyEvent, data=None, llm: LLM | None = None, today: 
     data = data if data is not None else default_data()
     try:
         _, planning_registry = build_tool_registries(data)
-        return _plan_for_event(event, assessment, data, llm, today or default_today(), planning_registry)
+        return _plan_for_event(event, assessment, data, llm, today or default_today(), planning_registry, planner,
+                               restore=restore)
     except MODEL_ERRORS as error:
         logger.exception("Event planning failed")
         return _result("error", f"{type(error).__name__}: {error}", assessment)
@@ -690,6 +707,12 @@ def main():
     )
 
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help="With --save: process the email even if its alert is still open",
+    )
+
+    parser.add_argument(
         "--save",
         action="store_true",
         help="Write the result to supply_event / plan / plan_action / audit_log (DATABASE_URL)",
@@ -707,6 +730,15 @@ def main():
         )
 
     email = email_path.read_text(encoding="utf-8")
+
+    if args.save and not args.force:
+        from ingestion.lineage import get_engine
+        from services.agents.results_store import open_event_for
+
+        existing = open_event_for(get_engine(), str(email_path))
+        if existing:
+            print(f"{email_path} is already being handled as {existing}; not planning it twice. Use --force to override.")
+            return
 
     data = None
     if args.db:

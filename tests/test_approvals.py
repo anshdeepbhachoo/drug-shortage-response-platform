@@ -109,6 +109,7 @@ def test_approve_picks_first_verified_option_and_records_everything(engine, plan
     decision = one(engine, "SELECT actor, actor_role, decision, option_index, note FROM decision")
     assert tuple(decision) == ("Priya Nair", "pharmacy_manager", "approved", 1, "Confirmed with Northside")
     assert one(engine, "SELECT status FROM plan").status == "approved"
+    assert one(engine, "SELECT status FROM supply_event").status == "mitigated"
     audit = one(engine, "SELECT actor_type, action, refs FROM audit_log WHERE action = 'Approved'")
     assert audit.actor_type == "human" and plan_id in audit.refs and f"{plan_id}-O1" in audit.refs
 
@@ -153,6 +154,7 @@ def test_stale_transfer_is_refused_and_plan_marked_broken(engine, plan_id):
     assert any("B would have 11.0 days" in p for p in result["problems"])
     assert count(engine, "decision") == 0
     assert one(engine, "SELECT status FROM plan").status == "broken"
+    assert one(engine, "SELECT status FROM supply_event").status == "open"     # still needs a response
     refused = one(engine, "SELECT actor_type, detail FROM audit_log WHERE action = 'Approval refused: plan no longer safe'")
     assert refused.actor_type == "rule" and refused.detail["attempted_by"] == "Priya Nair"
     with pytest.raises(ApprovalError, match="is broken"):

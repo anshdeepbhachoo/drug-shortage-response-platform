@@ -102,8 +102,11 @@ def run_shortage_signals(
     today: date | None = None,
     statuses=ACTIVE_STATUSES,
     limit: int = 20,
+    planner=None,
 ) -> dict:
-    """Plan every pending shortage report and save the results. Returns counts by outcome."""
+    """Plan every pending shortage report and save the results. Returns counts by outcome.
+
+    planner: optional code planner (rules_planner) instead of the planning agent."""
 
     today = today or default_today()
     outcomes: Counter = Counter()
@@ -111,7 +114,7 @@ def run_shortage_signals(
 
     for report in pending_reports(engine, statuses, limit):
         event = event_from_report(report, today)
-        result = process_event(event, data=data, llm=llm, today=today)
+        result = process_event(event, data=data, llm=llm, today=today, planner=planner)
         ids = save_pipeline_result(
             engine,
             result,

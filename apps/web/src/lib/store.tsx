@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import {
   HOSTILE_EMAIL,
   SUPPLIER_EMAIL,
@@ -8,7 +8,9 @@ import {
   initialEvents,
   initialStock,
   siteName,
+  applyLiveData,
 } from "../data/mock";
+import { api, type DaySummary, type LiveState, type Planner } from "./api";
 import type { AuditEntry, Draft, Email, Plan, Role, StockLine, SupplyEvent } from "./types";
 
 export const STEPS = [
@@ -34,6 +36,8 @@ export interface State {
   drafts: Draft[];
   audit: AuditEntry[];
   auditSeq: number;
+  /** Set when the data comes from the API (database) instead of the scripted story. */
+  live: { asOf: string; days: string[]; daysRun: string[]; inbox: string[]; loadedDays: string[] } | null;
 }
 
 type Action =
@@ -43,7 +47,8 @@ type Action =
   | { type: "approve"; planId: string; note: string }
   | { type: "reject"; planId: string; note: string }
   | { type: "route"; planId: string }
-  | { type: "markSent"; draftId: string };
+  | { type: "markSent"; draftId: string }
+  | { type: "load"; data: LiveState };
 
 function audit(state: State, entry: Omit<AuditEntry, "id" | "atMin"> & { atMin?: number }): State {
   const seq = state.auditSeq + 1;
@@ -63,6 +68,7 @@ function initialState(role: Role = "supply"): State {
     drafts: [],
     audit: [],
     auditSeq: 0,
+    live: null,
   };
   s = audit(s, { atMin: -14400, actor: "system", actorName: "ingestion", action: "Import", object: "Critical drug list v3", detail: "214 rows, 0 quarantined", refs: ["CDL-2026-V3"] });
   s = audit(s, { atMin: -900, actor: "system", actorName: "ingestion", action: "Supply event", object: "SE-1038", detail: "Cyclophosphamide shortage report ingested; status monitoring", refs: ["HC-SHORT-0911"] });
@@ -239,6 +245,23 @@ function approve(state: State, planId: string, note: string): State {
 }
 
 function reducer(state: State, action: Action): State {
+  if (action.type === "load") {
+    const { data } = action;
+    return {
+      ...state,
+      live: { asOf: data.asOf, days: data.days, daysRun: data.daysRun ?? [], inbox: data.inbox ?? [], loadedDays: data.loadedDays ?? [] },
+      step: 0,
+      clockMin: 0,
+      stock: data.stock,
+      events: data.events,
+      emails: data.emails,
+      plans: data.plans,
+      audit: data.audit,
+      drafts: [],
+    };
+  }
+  // In live mode the story steps don't apply, and decisions go through the API (see StoreProvider).
+  if (state.live && action.type !== "role") return state;
   switch (action.type) {
     case "reset":
       return initialState(state.role);
@@ -362,7 +385,25 @@ function advance(state: State): State {
   return s;
 }
 
-const StoreContext = createContext<{ state: State; dispatch: (a: Action) => void } | null>(null);
+export interface LiveControls {
+  /** "connecting" until the API answers; "offline" means the scripted story is shown. */
+  mode: "connecting" | "live" | "offline";
+  busy: string | null;
+  error: string | null;
+  notice: string | null;
+  setDay: (asOf: string) => void;
+  refresh: () => Promise<void>;
+  runEmail: (name: string) => Promise<void>;
+  runFollowup: (now: string) => Promise<void>;
+  /** Run one simulated day, then move to the next day. */
+  runDay: (day: string, planner: Planner) => Promise<boolean>;
+  /** Supply manager: plan a response for one drug now. Resolves to the alert to open. */
+  planDrug: (din: string, siteId?: string) => Promise<string | null>;
+  lastDay: DaySummary | null;
+  clear: () => void;
+}
+
+const StoreContext = createContext<{ state: State; dispatch: (a: Action) => void; live: LiveControls } | null>(null);
 
 /** `?step=4&role=pharmacist` jumps straight to a scenario step, for recorded demos. */
 function stateFromUrl(): State {
@@ -375,8 +416,112 @@ function stateFromUrl(): State {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, stateFromUrl);
-  return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
+  const [state, baseDispatch] = useReducer(reducer, undefined, stateFromUrl);
+  const forceDemo = new URLSearchParams(window.location.search).get("demo") === "1";
+  const [mode, setMode] = useState<LiveControls["mode"]>(forceDemo ? "offline" : "connecting");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [lastDay, setLastDay] = useState<DaySummary | null>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const load = useCallback(async (asOf?: string) => {
+    const data = await api.state(asOf);
+    applyLiveData(data);
+    baseDispatch({ type: "load", data });
+    setMode("live");
+  }, []);
+
+  useEffect(() => {
+    if (forceDemo) return;
+    load().catch(() => setMode("offline")); // no API: keep the scripted story
+  }, [forceDemo, load]);
+
+  /** Run an action, then reload the data. reload=false when the action itself loaded it
+   *  (e.g. changing the day: reloading with the old day would undo the change). */
+  const run = useCallback(async (label: string, work: () => Promise<string | void>, reload = true) => {
+    setBusy(label);
+    setError(null);
+    setNotice(null);
+    try {
+      const message = await work();
+      if (reload) await load(stateRef.current.live?.asOf);
+      if (message) setNotice(message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [load]);
+
+  const dispatch = useCallback((action: Action) => {
+    const current = stateRef.current;
+    if (!current.live || (action.type !== "approve" && action.type !== "reject")) {
+      baseDispatch(action);
+      return;
+    }
+    const by = USERS[current.role].name;
+    const asOf = current.live.asOf;
+    if (action.type === "approve") {
+      void run("Approving", async () => {
+        const result = await api.approve(action.planId, { by, role: current.role, note: action.note || undefined, as_of: asOf });
+        if (!result.approved) return `Approval refused: the plan is no longer safe. ${(result.problems ?? []).join(" ")}`;
+        return "Approved and recorded.";
+      });
+    } else {
+      void run("Rejecting", async () => {
+        await api.reject(action.planId, { by, role: current.role, note: action.note, as_of: asOf });
+        return "Rejected and recorded.";
+      });
+    }
+  }, [run]);
+
+  const live = useMemo<LiveControls>(() => ({
+    mode,
+    busy,
+    error,
+    notice,
+    setDay: (asOf) => void run("Loading day", async () => { await load(asOf); }, false),
+    refresh: () => run("Refreshing", async () => {}),
+    runEmail: (name) => run(`Running the agents on ${name}`, async () => {
+      const result = await api.runEmail(name, stateRef.current.live?.asOf);
+      return `Agents finished: ${result.status.replace(/_/g, " ")}.`;
+    }),
+    runFollowup: (now) => run("Running follow-up", async () => {
+      const actions = await api.runFollowup(now, stateRef.current.live?.asOf);
+      return actions.length ? actions.map((a) => `${a.request_id}: ${a.decision}`).join("; ") : "No approved transfers to follow up.";
+    }),
+    runDay: async (day, planner) => {
+      let ok = false;
+      await run(`Running ${day}: inbox, stock watch, planning, follow-up`, async () => {
+        const summary = await api.runDay(day, planner);
+        setLastDay(summary);
+        const days = stateRef.current.live?.days ?? [];
+        const next = days[days.indexOf(day) + 1];
+        await load(next ?? day); // move the clock on to the next day
+        ok = true;
+      }, false);
+      return ok;
+    },
+    planDrug: async (din, siteId) => {
+      let eventId: string | null = null;
+      const current = stateRef.current;
+      await run("Planning a response", async () => {
+        const result = await api.planDrug(din, {
+          by: USERS[current.role].name, role: current.role, as_of: current.live?.asOf ?? "", site_id: siteId,
+        });
+        eventId = result.event_id;
+        if (result.status === "already_open") return "This drug already has an open alert, so here is its plan.";
+        return `Plan ready (${result.planner ?? "planner"}): ${result.status.replace(/_/g, " ")}.`;
+      });
+      return eventId;
+    },
+    lastDay,
+    clear: () => { setError(null); setNotice(null); },
+  }), [mode, busy, error, notice, lastDay, run, load]);
+
+  return <StoreContext.Provider value={{ state, dispatch, live }}>{children}</StoreContext.Provider>;
 }
 
 export function useStore() {

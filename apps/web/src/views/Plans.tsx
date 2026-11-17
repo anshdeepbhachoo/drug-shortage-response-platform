@@ -1,30 +1,111 @@
-import { PLAN_STATUS, PlanCard, usePlanFeasible } from "../components/PlanCard";
-import { Card, ChartGuide, Empty, PageHead, Status } from "../components/ui";
+import { useEffect, useState } from "react";
+import { PlanCard, planStatus, usePlanFeasible } from "../components/PlanCard";
+import { drugById, siteName } from "../data/mock";
+import { lineCoverage } from "../lib/risk";
+import { Card, ChartGuide, Empty, PageHead, Status, formatDays, type Tone } from "../components/ui";
 import { useStore } from "../lib/store";
-import type { Plan } from "../lib/types";
+import type { Plan, SupplyEvent } from "../lib/types";
 
 const costOf = (p: Plan) => Number((p.cost.match(/\$([\d,]+)/)?.[1] ?? "0").replace(/,/g, ""));
 
-export function Plans() {
+export function Plans({ focusEvent }: { focusEvent?: string | null } = {}) {
   const { state } = useStore();
+  const live = state.live !== null;
+  // Opened from an alert or the Stock page: start on that drug.
+  const focusDrug = (focusEvent && state.events.find((e) => e.id === focusEvent)?.drugId) || "";
+  const [drugFilter, setDrugFilter] = useState(focusDrug);
+  const [siteFilter, setSiteFilter] = useState("");
+  useEffect(() => setDrugFilter(focusDrug), [focusDrug]);
+
   if (state.plans.length === 0) {
     return (
       <>
         <PageHead label="Plans" title="What are our options?" lead="Plans appear here as soon as an alert puts a hospital at risk." />
-        <Empty title="No plans yet">Nothing is at risk right now. Move the story on to see a supplier delay.</Empty>
+        <Empty title="No plans yet">{live ? "Run a day at the top: the platform plans for every drug in danger on its own." : "Nothing is at risk right now. Move the story on to see a supplier delay."}</Empty>
       </>
     );
   }
 
-  const latestRun = state.plans[0].solverRun;
-  const current = state.plans.filter((p) => p.solverRun === latestRun).sort((a, b) => a.rank - b.rank);
-  const earlier = state.plans.filter((p) => p.solverRun !== latestRun);
+  const drugIds = [...new Set(state.plans.map((p) => p.drugId))];
+  const siteIds = [...new Set(state.plans.flatMap((p) => p.sites ?? []))].sort();
+  const filters = (live || drugIds.length > 1) && (
+    <div className="row" style={{ gap: 16 }}>
+      <label className="row" style={{ gap: 8 }}>
+        <span className="label">Drug</span>
+        <select className="input" value={drugIds.includes(drugFilter) ? drugFilter : ""} onChange={(e) => setDrugFilter(e.target.value)} aria-label="Filter plans by drug">
+          <option value="">{live ? "All drugs: overview" : `All drugs (${drugIds.length})`}</option>
+          {drugIds.map((id) => (
+            <option key={id} value={id}>
+              {drugById(id)?.name ?? id}
+            </option>
+          ))}
+        </select>
+      </label>
+      {live && siteIds.length > 0 && (
+        <label className="row" style={{ gap: 8 }}>
+          <span className="label">Hospital</span>
+          <select className="input" value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)} aria-label="Filter plans by hospital">
+            <option value="">All hospitals</option>
+            {siteIds.map((id) => (
+              <option key={id} value={id}>
+                {siteName(id)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </div>
+  );
+
+  // Live, no drug chosen: one row per drug the platform is planning for, most urgent first.
+  if (live && !drugIds.includes(drugFilter)) {
+    return (
+      <>
+        <PageHead
+          label="Plans"
+          title="Plans by drug"
+          lead="The platform plans for every drug in danger on its own, from each day's stock. Emails and reports refine those plans. Pick a drug to see its options."
+        />
+        {filters}
+        <DrugOverview siteFilter={siteFilter} onOpen={setDrugFilter} />
+      </>
+    );
+  }
+
+  const plans = state.plans.filter(
+    (p) => (!drugIds.includes(drugFilter) || p.drugId === drugFilter) && (!siteFilter || (p.sites ?? []).includes(siteFilter)),
+  );
+  if (plans.length === 0) {
+    return (
+      <>
+        <PageHead label="Plans" title="What are our options?" lead="No plans match these filters." />
+        {filters}
+        <Empty title="Nothing here">No plan for this drug involves {siteName(siteFilter)}. Clear the hospital filter to see them all.</Empty>
+      </>
+    );
+  }
+
+  // The current plan: the one opened from an alert, else the newest one still in play.
+  const live_ = plans.find((p) => p.status !== "superseded" && p.status !== "rejected") ?? plans[0];
+  const latestRun = (focusEvent && plans.find((p) => p.eventId === focusEvent && p.status !== "superseded")?.solverRun) || live_.solverRun;
+  const current = plans.filter((p) => p.solverRun === latestRun).sort((a, b) => a.rank - b.rank);
+  const earlier = plans.filter((p) => p.solverRun !== latestRun);
   const event = state.events.find((e) => e.id === current[0].eventId)!;
   const replanned = latestRun === "SOLVER-32";
 
   return (
     <>
-      <PageHead label="Plans" title="What are our options?" lead={`${event.summary} Here are the ways to cover the gap, best first. Every option is checked in code before anyone sees it.`} />
+      <PageHead
+        label="Plans"
+        title={live ? `${drugById(current[0].drugId)?.name ?? "Plan"}: options` : "What are our options?"}
+        lead={`${event.summary} Here are the ways to cover the gap, best first. Every option is checked in code before anyone sees it.`}
+      />
+      {filters}
+      {live && (
+        <button className="link small" style={{ alignSelf: "flex-start" }} onClick={() => setDrugFilter("")}>
+          ← All drugs
+        </button>
+      )}
 
       {replanned && (
         <div className="callout warn">
@@ -111,6 +192,8 @@ function Compare({ plans }: { plans: Plan[] }) {
 }
 
 function CompareRow({ plan, max }: { plan: Plan; max: number }) {
+  const { state } = useStore();
+  const live = state.live !== null;
   const feasible = usePlanFeasible(plan);
   const cost = costOf(plan);
   return (
@@ -130,7 +213,7 @@ function CompareRow({ plan, max }: { plan: Plan; max: number }) {
         </div>
       </td>
       <td className="small ink-2">{plan.leadTime}</td>
-      <td>{feasible ? <Status tone={PLAN_STATUS[plan.status].tone}>{PLAN_STATUS[plan.status].text}</Status> : <Status tone="crit">Breaks a safety rule</Status>}</td>
+      <td>{feasible ? <Status tone={planStatus(plan.status, live).tone}>{planStatus(plan.status, live).text}</Status> : <Status tone="crit">Breaks a safety rule</Status>}</td>
     </tr>
   );
 }
@@ -138,7 +221,8 @@ function CompareRow({ plan, max }: { plan: Plan; max: number }) {
 function RouteAction({ plan }: { plan: Plan }) {
   const { state, dispatch } = useStore();
   const feasible = usePlanFeasible(plan);
-  if (plan.status !== "proposed") return null;
+  // Live plans are routed by the platform: verified options go straight to approval.
+  if (plan.status !== "proposed" || state.live) return null;
   const canRoute = state.role === "supply" && feasible;
   return (
     <>
@@ -147,5 +231,62 @@ function RouteAction({ plan }: { plan: Plan }) {
         Send this one for approval instead
       </button>
     </>
+  );
+}
+
+const SOURCE_WORDS: Record<string, string> = {
+  stock_watch: "stock watch",
+  supplier_email: "supplier email",
+  shortage_report: "Health Canada report",
+  manual: "supply manager",
+  site_report: "hospital report",
+};
+
+const STATE_TONE = (state = ""): Tone =>
+  state.includes("approved") ? "good" : state.includes("waiting") ? "warn" : state.includes("No plan") ? "neutral" : "crit";
+
+/** Live: one row per drug with a plan in play, most urgent first. */
+function DrugOverview({ siteFilter, onOpen }: { siteFilter: string; onOpen: (drugId: string) => void }) {
+  const { state } = useStore();
+  const byDrug = new Map<string, SupplyEvent[]>();
+  for (const event of state.events) {
+    if (event.status === "monitoring") continue;
+    if (!state.plans.some((p) => p.eventId === event.id)) continue;
+    byDrug.set(event.drugId, [...(byDrug.get(event.drugId) ?? []), event]);
+  }
+
+  const rows = [...byDrug.entries()]
+    .map(([drugId, events]) => {
+      const current = events[0]; // newest alert for the drug
+      const sites = [...new Set(events.flatMap((e) => e.sites ?? (e.siteId ? [e.siteId] : [])))];
+      const lines = state.stock.filter((l) => l.drugId === drugId && (sites.length === 0 || sites.includes(l.siteId)));
+      const days = lines.length ? Math.min(...lines.map(lineCoverage)) : Infinity;
+      const sources = [...new Set(events.flatMap((e) => (e.evidence ?? []).map((ev) => SOURCE_WORDS[ev.source] ?? ev.source)))];
+      return { drugId, current, sites, days, sources, critical: drugById(drugId)?.criticalList ?? false };
+    })
+    .filter((r) => !siteFilter || r.sites.includes(siteFilter))
+    .sort((a, b) => a.days - b.days || Number(b.critical) - Number(a.critical));
+
+  if (rows.length === 0) {
+    return <Empty title="Nothing here">No drug with a plan involves {siteName(siteFilter)}.</Empty>;
+  }
+
+  return (
+    <div className="attention">
+      {rows.map((r) => (
+        <button key={r.drugId} className="attention-item" onClick={() => onOpen(r.drugId)}>
+          <span className="big">{Number.isFinite(r.days) ? formatDays(r.days) : "–"}</span>
+          <span>
+            <strong>{drugById(r.drugId)?.name ?? r.drugId}</strong>
+            {r.critical && <span className="tag" style={{ marginLeft: 8 }}>critical</span>}
+            <div className="small ink-2">
+              Days left at the worst hospital · {r.sites.length ? r.sites.map(siteName).join(", ") : "several hospitals"} · raised by{" "}
+              {r.sources.join(", ") || "the platform"}
+            </div>
+          </span>
+          <Status tone={STATE_TONE(r.current.planState)}>{r.current.planState ?? "Plan"}</Status>
+        </button>
+      ))}
+    </div>
   );
 }

@@ -6,6 +6,7 @@ rules are enforced here in code (and the database), never by a model:
 - only plans waiting for approval can be decided, once (one decision per plan);
 - only options that passed the code checks can be approved;
 - the person's role must be allowed to approve that kind of action;
+- approving marks the plan's supply event as mitigated (it has a response);
 - a transfer is re-checked against *current* stock first. If a donor would now
   fall below its minimum (e.g. its usage went up since the plan was made), the
   plan is marked broken and the approval is refused.
@@ -24,7 +25,7 @@ import argparse
 import json
 import sys
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 
 from dotenv import load_dotenv
 from sqlalchemy import text
@@ -139,13 +140,14 @@ def _lock_plan(conn: Connection, plan_id: str):
     return plan
 
 
-def _audit(conn: Connection, actor: str, actor_type: str, action: str, plan_id: str, detail: dict, refs: list[str]) -> int:
+def _audit(conn: Connection, actor: str, actor_type: str, action: str, plan_id: str, detail: dict, refs: list[str],
+           at=None) -> int:
     return conn.execute(text("""
-        INSERT INTO audit_log (actor, actor_type, action, object, detail, refs)
-        VALUES (:actor, :actor_type, :action, :object, CAST(:detail AS jsonb), :refs)
+        INSERT INTO audit_log (actor, actor_type, action, object, detail, refs, at)
+        VALUES (:actor, :actor_type, :action, :object, CAST(:detail AS jsonb), :refs, COALESCE(:at, now()))
         RETURNING audit_id
     """), {"actor": actor, "actor_type": actor_type, "action": action, "object": plan_id,
-           "detail": json.dumps(detail, default=str), "refs": refs}).scalar_one()
+           "detail": json.dumps(detail, default=str), "refs": refs, "at": at}).scalar_one()
 
 
 def approve_plan(
@@ -156,8 +158,13 @@ def approve_plan(
     data,
     option: int | None = None,
     note: str | None = None,
+    at: "datetime | None" = None,
 ) -> dict:
     """Approve one option of a plan. data is the stock source used for the re-check.
+
+    at: the decision time to record (default: now). Simulations pass their own
+    clock so follow-up deadlines line up with the scenario day; the audit entry
+    still records the real time it was written.
 
     Returns {"approved": True, ...} or {"approved": False, "problems": [...]} when
     the re-check found the plan is no longer safe (the plan is then marked broken).
@@ -197,26 +204,29 @@ def approve_plan(
             if problems:
                 conn.execute(text("UPDATE plan SET status = 'broken' WHERE plan_id = :p"), {"p": plan_id})
                 audit_id = _audit(conn, "approvals", "rule", "Approval refused: plan no longer safe", plan_id,
-                                  {"attempted_by": by, "role": role, "option": option, "problems": problems}, refs)
+                                  {"attempted_by": by, "role": role, "option": option, "problems": problems}, refs, at)
                 return {"approved": False, "plan_id": plan_id, "status": "broken", "option": option,
                         "problems": problems, "audit_id": audit_id}
 
         conn.execute(text("""
-            INSERT INTO decision (plan_id, actor, actor_role, decision, note, option_index)
-            VALUES (:plan_id, :actor, :role, 'approved', :note, :option)
-        """), {"plan_id": plan_id, "actor": by, "role": role, "note": note, "option": option})
+            INSERT INTO decision (plan_id, actor, actor_role, decision, note, option_index, decided_at)
+            VALUES (:plan_id, :actor, :role, 'approved', :note, :option, COALESCE(:at, now()))
+        """), {"plan_id": plan_id, "actor": by, "role": role, "note": note, "option": option, "at": at})
         conn.execute(text("UPDATE plan SET status = 'approved' WHERE plan_id = :p"), {"p": plan_id})
+        # The alert now has an approved response; follow-up tracks it from here.
+        conn.execute(text("UPDATE supply_event SET status = 'mitigated' WHERE event_id = :e AND status = 'open'"),
+                     {"e": plan.event_id})
         audit_id = _audit(conn, by, "human", "Approved", plan_id,
                           {"role": role, "option": option, "type": kind, "note": note,
                            "actions": [{k: a[k] for k in ("action_id", "from_site", "to_site", "units")} for a in actions]},
-                          refs)
+                          refs, at)
 
     return {"approved": True, "plan_id": plan_id, "status": "approved", "option": option,
             "type": kind, "action_ids": [a["action_id"] for a in actions], "audit_id": audit_id}
 
 
-def reject_plan(engine: Engine, plan_id: str, by: str, role: str, note: str) -> dict:
-    """Reject a plan (any of its options). A reason is required."""
+def reject_plan(engine: Engine, plan_id: str, by: str, role: str, note: str, at: "datetime | None" = None) -> dict:
+    """Reject a plan (any of its options). A reason is required. at: as in approve_plan."""
 
     if not by.strip():
         raise ApprovalError("A rejection needs the approver's name.")
@@ -230,11 +240,11 @@ def reject_plan(engine: Engine, plan_id: str, by: str, role: str, note: str) -> 
         if plan.status not in ("pending_approval", "proposed"):
             raise ApprovalError(f"Plan {plan_id} is {plan.status}; it can no longer be rejected.")
         conn.execute(text("""
-            INSERT INTO decision (plan_id, actor, actor_role, decision, note)
-            VALUES (:plan_id, :actor, :role, 'rejected', :note)
-        """), {"plan_id": plan_id, "actor": by, "role": role, "note": note})
+            INSERT INTO decision (plan_id, actor, actor_role, decision, note, decided_at)
+            VALUES (:plan_id, :actor, :role, 'rejected', :note, COALESCE(:at, now()))
+        """), {"plan_id": plan_id, "actor": by, "role": role, "note": note, "at": at})
         conn.execute(text("UPDATE plan SET status = 'rejected' WHERE plan_id = :p"), {"p": plan_id})
-        audit_id = _audit(conn, by, "human", "Rejected", plan_id, {"role": role, "note": note}, [plan_id, plan.event_id])
+        audit_id = _audit(conn, by, "human", "Rejected", plan_id, {"role": role, "note": note}, [plan_id, plan.event_id], at)
 
     return {"approved": False, "plan_id": plan_id, "status": "rejected", "audit_id": audit_id}
 

@@ -14,6 +14,32 @@ export const PLAN_STATUS: Record<PlanStatus, { tone: Tone; text: string }> = {
   superseded: { tone: "neutral", text: "Replaced by a newer plan" },
 };
 
+/** Live data: approval isn't tied to one pharmacist, and "superseded" means another option was chosen. */
+const LIVE_TEXT: Partial<Record<PlanStatus, string>> = {
+  "pending-approval": "Waiting for approval",
+  superseded: "Not chosen",
+};
+
+export function planStatus(status: PlanStatus, live: boolean) {
+  const base = PLAN_STATUS[status];
+  return live && LIVE_TEXT[status] ? { ...base, text: LIVE_TEXT[status]! } : base;
+}
+
+/** Live data: which drug, where, and what raised it, so a card makes sense on its own. */
+function planSubject(drugName: string, event: { siteId?: string; source: string; sourceRef: string }) {
+  const where = event.siteId ? siteName(event.siteId) : "several hospitals";
+  const from = event.sourceRef.startsWith("stock_watch:")
+    ? "stock watch"
+    : event.sourceRef.startsWith("manual:")
+      ? "the supply manager"
+    : event.source === "supplier-email"
+      ? "supplier email"
+      : event.source === "hc-shortage-api"
+        ? "Health Canada report"
+        : "hospital report";
+  return `${drugName} · ${where} · raised by ${from}`;
+}
+
 const MAX = 60;
 const pct = (d: number) => `${(Math.min(d, MAX) / MAX) * 100}%`;
 
@@ -25,7 +51,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
   const hard = checks.filter((c) => c.hard);
   const soft = checks.filter((c) => !c.hard);
   const after = applyPlan(state.stock, plan, event.siteId);
-  const status = PLAN_STATUS[plan.status];
+  const status = planStatus(plan.status, state.live !== null);
   const faded = plan.status === "superseded" || plan.status === "rejected";
 
   return (
@@ -33,6 +59,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
       <header className="plan-top">
         <span className="rank">#{plan.rank}</span>
         <div>
+          {state.live && <div className="label" style={{ marginBottom: 4 }}>{planSubject(drug.name, event)}</div>}
           <h3>{plan.title}</h3>
           <div className="row" style={{ marginTop: 4 }}>
             {recommended && feasible && <span className="badge-accent">Recommended</span>}
@@ -147,7 +174,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
 
       {!compact && (
         <details className="why">
-          <summary>Why this plan, in the AI's words</summary>
+          <summary>{plan.explanation.startsWith("Rules planner") ? "Why this plan (rules planner, no AI)" : "Why this plan, in the AI's words"}</summary>
           <div className="inner">
             <p>{plan.explanation}</p>
             <span className="small muted">Every number in this text was checked against the calculation before it was shown.</span>
