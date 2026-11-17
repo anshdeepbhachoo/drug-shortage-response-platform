@@ -12,13 +12,15 @@ import { DataSources } from "./views/DataSources";
 import { Drafts } from "./views/Drafts";
 import { Events } from "./views/Events";
 import { Home } from "./views/Home";
+import { Hospitals } from "./views/Hospitals";
 import { Plans } from "./views/Plans";
 import { RiskBoard } from "./views/RiskBoard";
 
-export type ViewId = "home" | "board" | "events" | "plans" | "approvals" | "drafts" | "audit" | "data";
+export type ViewId = "home" | "hospitals" | "board" | "events" | "plans" | "approvals" | "drafts" | "audit" | "data";
 
 const NAV: { id: ViewId; label: string; roles: Role[] }[] = [
   { id: "home", label: "Home", roles: ["supply", "pharmacist", "procurement", "auditor"] },
+  { id: "hospitals", label: "Hospitals", roles: ["supply", "pharmacist", "procurement", "auditor"] },
   { id: "board", label: "Stock", roles: ["supply", "pharmacist", "procurement", "auditor"] },
   { id: "events", label: "Alerts", roles: ["supply", "pharmacist", "auditor"] },
   { id: "plans", label: "Plans", roles: ["supply", "pharmacist", "procurement", "auditor"] },
@@ -286,6 +288,14 @@ export function App() {
         )}
 
         {activeView === "home" && <Home go={(v) => go(v)} />}
+        {activeView === "hospitals" && (
+          <Hospitals
+            go={(v, eventId) => {
+              setFocusEvent(eventId ?? null);
+              go(v);
+            }}
+          />
+        )}
         {activeView === "board" && (
           <RiskBoard
             go={(v, eventId) => {

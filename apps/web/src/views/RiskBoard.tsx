@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { DRUGS, SITES, dayLabel, drugById, siteName } from "../data/mock";
-import { AMBER_BELOW, RED_BELOW, lineCoverage, projection, tierFor, withApprovedPlans } from "../lib/risk";
+import { DRUGS, dayLabel, drugById, siteName } from "../data/mock";
+import { lineCoverage, projection, tierFor, withApprovedPlans } from "../lib/risk";
 import { useStore } from "../lib/store";
 import type { StockLine, SupplyEvent, Tier } from "../lib/types";
-import { Card, ChartGuide, Change, Empty, PageHead, ProjectionChart, Sources, Status, TIER_TONE, TierStatus, formatDays } from "../components/ui";
+import { Heatmap } from "../components/Heatmap";
+import { Card, ChartGuide, Change, Empty, PageHead, ProjectionChart, Sources, Status, TierStatus, formatDays } from "../components/ui";
 
 const AXIS_MAX = 60;
-const pct = (days: number) => `${(Math.min(days, AXIS_MAX) / AXIS_MAX) * 100}%`;
 const runOutLabel = (days: number) => (days >= AXIS_MAX ? "not within 60 days" : dayLabel(Math.floor(days)));
 
 type Key = { drugId: string; siteId: string };
@@ -47,12 +47,6 @@ export function RiskBoard({ go }: { go: (view: string, focusEvent?: string) => v
   const sel = selected ?? { drugId: first.line.drugId, siteId: first.line.siteId };
   const selCell = cells.find((c) => c.line.drugId === sel.drugId && c.line.siteId === sel.siteId) ?? first;
   const selProjected = projected.find((l) => l.drugId === selCell.line.drugId && l.siteId === selCell.line.siteId) ?? selCell.line;
-
-  // Drugs with the lowest cover first, so problems are at the top.
-  const drugsByRisk = [...DRUGS].sort((a, b) => {
-    const min = (id: string) => Math.min(...cells.filter((c) => c.line.drugId === id).map((c) => c.days));
-    return min(a.id) - min(b.id);
-  });
 
   const pick = (k: Key) => {
     setSelected(k);
@@ -105,98 +99,13 @@ export function RiskBoard({ go }: { go: (view: string, focusEvent?: string) => v
         {tab === "attention" ? (
           <Attention risky={risky} selected={sel} pick={pick} />
         ) : (
-        <Card
-          label="Days of stock left, per hospital"
-          title="All drugs, lowest first"
-          footer={
-            <div className="legend">
-              <span>
-                <i style={{ background: "var(--crit)" }} />
-                Under {RED_BELOW} days
-              </span>
-              <span>
-                <i style={{ background: "var(--warn)" }} />
-                Under {AMBER_BELOW} days
-              </span>
-              <span>
-                <i style={{ background: "var(--good)" }} />
-                {AMBER_BELOW}+ days
-              </span>
-              <span>
-                <i style={{ background: "none", borderLeft: "2px dashed var(--crit)", width: 2, borderRadius: 0 }} />
-                14-day safety floor
-              </span>
-              <span>
-                <i className="gain-swatch" />
-                Added by approved plan
-              </span>
-            </div>
-          }
-        >
-          <StripGuide cells={cells} />
-          <table className="strip">
-            <thead>
-              <tr className="axis-row">
-                <th />
-                <th>
-                  <div className="bar-row" style={{ cursor: "default" }}>
-                    <span />
-                    <div className="bar-track">
-                      {[0, 7, 14, 30, 60].map((t) => (
-                        <span key={t} className="tick" style={{ left: pct(t) }}>
-                          {t === 60 ? "60+ d" : t}
-                        </span>
-                      ))}
-                    </div>
-                    <span />
-                  </div>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {drugsByRisk.map((d) => (
-                <tr key={d.id} className="drug-row">
-                  <td className="drug">
-                    <strong>{d.name}</strong>
-                    <span>{d.form}</span>
-                  </td>
-                  <td>
-                    <div className="bars">
-                      {SITES.map((s) => {
-                        const c = cells.find((x) => x.line.drugId === d.id && x.line.siteId === s.id)!;
-                        const isSel = sel.drugId === d.id && sel.siteId === s.id;
-                        return (
-                          <button
-                            key={s.id}
-                            className={`bar-row ${isSel ? "selected" : ""}`}
-                            onClick={() => pick({ drugId: d.id, siteId: s.id })}
-                            title={`${d.name} at ${s.short}: ${formatDays(c.days)} days${c.changed ? `, ${formatDays(c.after)} after the approved plan` : ""}`}
-                            aria-label={`${d.name} at ${s.short}: ${formatDays(c.days)} days, ${c.tier === "green" ? "OK" : c.tier === "amber" ? "watch" : "critical"}`}
-                          >
-                            <span className="site">{s.short}</span>
-                            <div className="bar-track">
-                              <span className="bar-zone red" style={{ left: 0, width: pct(RED_BELOW) }} />
-                              <span className="bar-zone amber" style={{ left: pct(RED_BELOW), width: `calc(${pct(AMBER_BELOW)} - ${pct(RED_BELOW)})` }} />
-                              {c.changed && c.after > c.days && (
-                                <span className="bar-gain" style={{ left: pct(c.days), width: `calc(${pct(c.after)} - ${pct(c.days)})` }} />
-                              )}
-                              <span className={`bar-fill ${TIER_TONE[c.tier]}`} style={{ width: pct(c.days) }} />
-                              <span className="bar-floor" style={{ left: pct(AMBER_BELOW) }} />
-                              {c.changed && <span className="bar-after" style={{ left: pct(c.after) }} />}
-                            </div>
-                            <span className="bar-val">
-                              {c.tier !== "green" && <span aria-hidden>{c.tier === "red" ? "✕" : "!"}</span>}
-                              <b>{formatDays(c.days)}</b>d
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <Card label="Days of stock left, per hospital" title="Every drug at every hospital, most urgent first">
+          <Heatmap
+            lines={state.stock}
+            after={new Map(cells.filter((c) => c.changed).map((c) => [`${c.line.drugId}|${c.line.siteId}`, c.after]))}
+            selected={sel}
+            onPick={(drugId, siteId) => pick({ drugId, siteId })}
+          />
         </Card>
         )}
 
@@ -375,28 +284,6 @@ function CellDetail({ line, projected, openPlan }: { line: StockLine; projected:
       </div>
       <PlanAction line={line} openPlan={openPlan} />
     </Card>
-  );
-}
-
-function StripGuide({ cells }: { cells: { line: StockLine; days: number; tier: string }[] }) {
-  const worst = [...cells].sort((a, b) => a.days - b.days)[0];
-  return (
-    <ChartGuide
-      items={[
-        { mark: "bar-good", text: <>Each <b>row</b> is one drug; each <b>bar</b> is one hospital. A longer bar means <b>more days</b> before that hospital runs out (stock on hand ÷ daily use, counting deliveries on their due day).</> },
-        { mark: "bar-crit", text: <>Bar colour says how urgent: <b>red</b> under {RED_BELOW} days, <b>amber</b> under {AMBER_BELOW} days, <b>green</b> is fine.</> },
-        { mark: "floor", text: <>The <b>dashed red line</b> is the {AMBER_BELOW}-day safety floor every hospital must stay above.</> },
-        { mark: "gain", text: <>A <b>striped green extension</b> shows the extra days an approved plan adds once it is delivered. A dark tick marks where the bar ends up.</> },
-      ]}
-      example={
-        worst && (
-          <>
-            {drugById(worst.line.drugId).name} at {siteName(worst.line.siteId)} has the shortest bar: <b>{formatDays(worst.days)} days</b> of stock
-            {worst.days < AMBER_BELOW ? ", which is left of the safety line, so it needs action." : ", which is still right of the safety line."} Click any bar to see its details on the right.
-          </>
-        )
-      }
-    />
   );
 }
 
