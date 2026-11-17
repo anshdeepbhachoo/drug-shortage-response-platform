@@ -145,9 +145,15 @@ class FollowUpAgent:
         llm: LLM | None = None,
         planner: Callable | None = None,
         audit_path: str | Path | None = None,
+        audit_writer: Callable[[dict], None] | None = None,
     ):
+        """data: CsvData or anything with the same methods (e.g. PostgresData).
+        audit_writer: optional callable that receives each audit record, e.g. to
+        store it in the database's audit_log (see followup_db.py). Works with or
+        without audit_path."""
         self.data = data
         self.audit_path = Path(audit_path) if audit_path else None
+        self.audit_writer = audit_writer
         self.snapshot = snapshot
         self.llm = llm
         self.planner = planner
@@ -457,7 +463,7 @@ Allowed decisions: {serialize(sorted(allowed))}
     def _write_audit(self, action, reading, allowed):
         """Append one JSON line per decision. This is the permanent record."""
 
-        if self.audit_path is None:
+        if self.audit_path is None and self.audit_writer is None:
             return
         record = action.model_dump(mode="json")
         # "at" is the agent's clock (simulated in the demo, real in production).
@@ -465,6 +471,10 @@ Allowed decisions: {serialize(sorted(allowed))}
         record["logged_at"] = datetime.now(timezone.utc).isoformat()
         record["reading"] = reading.model_dump(mode="json") if reading else None
         record["allowed_decisions"] = sorted(allowed) if allowed else None
+        if self.audit_writer is not None:
+            self.audit_writer(record)
+        if self.audit_path is None:
+            return
         self.audit_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.audit_path, "a") as handle:
             handle.write(json.dumps(record) + "\n")
