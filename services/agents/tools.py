@@ -175,10 +175,41 @@ def build_tool_registries(data: CsvData):
         function=get_spare_units,
     )
 
+    # Health Canada reference data, only when the data source has it (the
+    # database). CsvData has none, so CSV mode gets exactly the tools it had.
+    reference = []
+
+    if hasattr(data, "shortage_reports"):
+        reference.append(AgentTool(
+            name="get_shortage_reports",
+            description=(
+                "Retrieve Health Canada shortage reports for a drug DIN: status, "
+                "Tier 3 flag, reason, start and estimated end dates. Official "
+                "public data, read only."
+            ),
+            properties={"din": string("Drug Identification Number.")},
+            required=["din"],
+            function=lambda din: data.shortage_reports(din),
+        ))
+
+    if hasattr(data, "drug_product"):
+        reference.append(AgentTool(
+            name="get_drug_product",
+            description=(
+                "Retrieve the Health Canada Drug Product Database record for a "
+                "DIN: brand, company, marketing status, ingredients, form and "
+                "route. Returns null if the DIN is not in the database."
+            ),
+            properties={"din": string("Drug Identification Number.")},
+            required=["din"],
+            function=lambda din: data.drug_product(din),
+        ))
+
     assessment_tools = ToolRegistry([
         search,
         stock,
         orders,
+        *reference,
     ])
 
     planning_tools = ToolRegistry([
@@ -186,6 +217,7 @@ def build_tool_registries(data: CsvData):
         orders,
         substitutions,
         spare,
+        *reference,
     ])
 
     return assessment_tools, planning_tools

@@ -7,8 +7,8 @@ Each task also records its own ingestion_run rows, as it does when run alone.
 
 The nightly workflow:
 
-    shortages ──► dpd
-    (Health Canada shortage reports)   (DPD details for drugs in shortage only)
+    shortages ──► dpd       DPD details for drugs in shortage only
+             └──► signals   plan supply events from new shortage reports for our drugs
 
 Usage:
   python -m ingestion.workflow nightly
@@ -147,8 +147,8 @@ def run_workflow(
 # The nightly workflow
 # ---------------------------------------------------------
 
-def nightly_tasks(shortage_client=None, dpd_client=None) -> list[Task]:
-    """Clients are created per run unless passed in (tests pass fakes)."""
+def nightly_tasks(shortage_client=None, dpd_client=None, llm=None, data=None) -> list[Task]:
+    """Clients, model and data source are created per run unless passed in (tests pass fakes)."""
 
     def shortages(engine: Engine, params: Params) -> dict:
         from ingestion.shortage_client import ShortageClient
@@ -179,9 +179,26 @@ def nightly_tasks(shortage_client=None, dpd_client=None) -> list[Task]:
             if dpd_client is None:
                 client.close()
 
+    def signals(engine: Engine, params: Params) -> dict:
+        import os
+
+        from services.agents.db_data import PostgresData
+        from services.agents.shortage_signals import pending_reports, run_shortage_signals
+
+        if llm is None and not os.getenv("BEDROCK_MODEL_ID"):
+            # Planning needs the model; leave reports pending for a run that has one.
+            return {"skipped": "no model configured (BEDROCK_MODEL_ID)", "pending": len(pending_reports(engine))}
+
+        source = data or (PostgresData.from_env() if os.getenv("DATABASE_URL_READONLY") else PostgresData(engine))
+        result = run_shortage_signals(engine, source, llm=llm, limit=params.get("signal_limit", 20))
+        result.pop("saved", None)
+        return result
+
     return [
         Task("shortages", shortages, retries=2, retry_delay=60),
         Task("dpd", dpd, depends_on=("shortages",), retries=1, retry_delay=60),
+        # No automatic retry: a failed report stays pending and is retried next run.
+        Task("signals", signals, depends_on=("shortages",), retries=0),
     ]
 
 
@@ -198,6 +215,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-batches", type=int, default=0, help="DPD batches per run (0 = until done)")
     parser.add_argument("--stale-days", type=int, default=7, help="Re-fetch DPD data older than this")
     parser.add_argument("--shortage-max-pages", type=int, default=None, help="Stop the shortage pull after N pages")
+    parser.add_argument("--signal-limit", type=int, default=20, help="Shortage reports to plan per run")
     args = parser.parse_args(argv)
 
     tasks = WORKFLOWS[args.workflow]()
@@ -214,6 +232,7 @@ def main(argv: list[str] | None = None) -> int:
         "max_batches": args.max_batches or None,
         "stale_days": args.stale_days,
         "shortage_max_pages": args.shortage_max_pages,
+        "signal_limit": args.signal_limit,
     }
     try:
         results = run_workflow(args.workflow, tasks, get_engine(), params, set(args.only) if args.only else None)
