@@ -648,6 +648,12 @@ def main():
         help="Path to the supplier email text file",
     )
 
+    parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Write the result to supply_event / plan / plan_action / audit_log (DATABASE_URL)",
+    )
+
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -662,6 +668,14 @@ def main():
     email = email_path.read_text(encoding="utf-8")
 
     result = process_email(email)
+
+    if args.save:
+        from ingestion.lineage import get_engine
+        from services.agents.results_store import save_pipeline_result
+
+        result["saved"] = save_pipeline_result(
+            get_engine(), result, source_ref=str(email_path)
+        )
 
     print(
         json.dumps(
