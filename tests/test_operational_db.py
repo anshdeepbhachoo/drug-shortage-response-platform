@@ -118,6 +118,7 @@ def test_progression_keeps_every_day_as_history(engine):
         days = conn.execute(text("SELECT count(DISTINCT as_of) FROM inventory_snapshot")).scalar_one()
     assert days == 10
     assert count(engine, "inventory_snapshot") == 132 * 10
+    assert count(engine, "purchase_order_snapshot") == 20 * 10
 
 
 # ---------------------------------------------------------
@@ -145,6 +146,7 @@ def test_as_of_reads_that_day_of_the_progression(engine, day):
     db_data, csv_day = PostgresData(engine, as_of=date.fromisoformat(day)), CsvData(DAYS / day)
     for din in dins(DAYS / day):
         assert db_data.stock(din) == csv_day.stock(din), f"{din} on {day}"
+        assert without_status(db_data.orders(din)) == without_status(csv_day.orders(din)), f"{din} orders on {day}"
 
 
 def test_progression_story_is_visible_through_as_of(engine):
@@ -153,6 +155,35 @@ def test_progression_story_is_visible_through_as_of(engine):
 
     assert site_a(18)["on_hand"] == 30     # before the partial transfer
     assert site_a(19)["on_hand"] == 120    # partial transfer of 100 received
+
+
+def test_orders_follow_the_progression(engine):
+    load_progression(engine, DAYS)
+    o1001 = lambda day: next(o for o in PostgresData(engine, as_of=date(2026, 11, day)).orders("99000001")
+                             if o["order_id"] == "O-1001")
+
+    assert (o1001(15)["expected_date"], o1001(15)["qty"]) == ("2026-11-18", "300")   # before the delay
+    assert (o1001(16)["expected_date"], o1001(16)["qty"]) == ("2026-12-07", "300")   # delay applied
+    assert (o1001(22)["expected_date"], o1001(22)["qty"]) == ("2026-12-07", "220")   # partial delivery
+
+
+def test_day_one_email_is_not_double_delayed_after_loading_the_progression(engine):
+    """Regression: Nov 15 stock read with Nov 24 orders counted the 3-week delay twice
+    (A short by 370 instead of 180)."""
+
+    load_progression(engine, DAYS)
+    email = (MOCK / "emails" / "clear.txt").read_text()
+
+    def run(data):
+        model = FakeModel(assessments=[assessment()], plans=[transfer("B", 180)])
+        return process_email(email, data=data, llm=model, today=date(2026, 11, 15))
+
+    from_db = run(PostgresData(engine, as_of=date(2026, 11, 15)))
+
+    assert from_db["shortfall"] == {"A": 180}
+    assert from_db["cover_days"]["A"] == 24
+    assert from_db["status"] == "plan_generated"
+    assert from_db == run(CsvData(DAYS / "2026-11-15"))
 
 
 def test_cancelled_orders_do_not_count_as_incoming(mock_loaded):

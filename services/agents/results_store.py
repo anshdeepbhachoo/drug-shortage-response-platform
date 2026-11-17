@@ -60,8 +60,15 @@ def save_pipeline_result(
     result: dict,
     source_ref: str,
     actor: str = "signal-agent",
+    source_type: str = "supplier_email",
+    kind: str = "delay",
 ) -> dict:
-    """Store one process_email() result. Returns the IDs that were written."""
+    """Store one process_email() / process_event() result. Returns the IDs that were written.
+
+    source_type and kind describe the signal: a supplier email reporting a
+    delay (default), or a Health Canada shortage report (shortage_report /
+    shortage).
+    """
 
     status = result["status"]
     assessment = result.get("assessment") or {}
@@ -76,7 +83,7 @@ def save_pipeline_result(
                     """
                     INSERT INTO supply_event (event_id, din, site_id, kind, source_type, source_ref,
                                               delay_days, confidence, status, detail)
-                    VALUES (:event_id, :din, :site_id, 'delay', 'supplier_email', :source_ref,
+                    VALUES (:event_id, :din, :site_id, :kind, :source_type, :source_ref,
                             :delay_days, :confidence, :status, CAST(:detail AS jsonb))
                     """
                 ),
@@ -86,6 +93,8 @@ def save_pipeline_result(
                     # One affected site is recorded on the event; several stay in the plan.
                     "site_id": risk_sites[0] if len(risk_sites) == 1 else None,
                     "source_ref": source_ref,
+                    "kind": kind,
+                    "source_type": source_type,
                     "delay_days": result.get("delay_days"),
                     "confidence": assessment["confidence"],
                     "status": "open" if risk_sites else "monitoring",

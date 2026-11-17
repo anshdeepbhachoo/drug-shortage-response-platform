@@ -8,9 +8,9 @@ their tools work unchanged:
 Connect with the read-only role (readonly_app). Agents never write; our code
 writes their results separately (see results_store.py).
 
-as_of picks the stock and usage snapshot to read (latest on or before that
-date), so the agents can be run against any day of the loaded progression.
-Orders are not kept as history, so they are always the latest loaded.
+as_of picks the snapshot to read (latest on or before that date) for stock,
+usage and orders, so the agents can be run against any day of the loaded
+progression. Without as_of, orders come from purchase_order (current state).
 """
 
 from __future__ import annotations
@@ -130,17 +130,27 @@ class PostgresData:
     # ---------------------------------------------------------
 
     def orders(self, din):
+        if self.as_of is None:
+            source, day_filter = "purchase_order o", "TRUE"
+        else:
+            # Each feed date holds the full order list for that day, so take the
+            # whole list from the latest feed date on or before as_of.
+            source = "purchase_order_snapshot o"
+            day_filter = """o.as_of = (SELECT max(as_of) FROM purchase_order_snapshot
+                                       WHERE as_of <= CAST(:as_of AS date))"""
         rows = self._rows(
-            """
+            f"""
             SELECT o.order_id, o.din, s.name AS supplier, o.site_id, o.qty,
                    o.expected_date, o.status
-            FROM purchase_order o LEFT JOIN supplier s USING (supplier_id)
+            FROM {source} LEFT JOIN supplier s USING (supplier_id)
             WHERE o.din = :din AND o.status = ANY(CAST(:statuses AS text[]))
               AND o.expected_date IS NOT NULL
+              AND {day_filter}
             ORDER BY o.order_id
             """,
             din=din,
             statuses=list(INCOMING_STATUSES),
+            as_of=self.as_of,
         )
         return [
             {
@@ -154,6 +164,53 @@ class PostgresData:
             }
             for row in rows
         ]
+
+    # ---------------------------------------------------------
+    # Health Canada reference data (agent tools get_shortage_reports and
+    # get_drug_product). Dates come back as ISO strings so tool results are JSON.
+    # ---------------------------------------------------------
+
+    def shortage_reports(self, din, limit: int = 10):
+        rows = self._rows(
+            """
+            SELECT report_id, status, report_type, tier3, shortage_reason, brand_name,
+                   company_name, actual_start_date, estimated_end_date, updated_date
+            FROM shortage_report WHERE din = :din
+            ORDER BY updated_date DESC NULLS LAST, report_id DESC
+            LIMIT :limit
+            """,
+            din=din,
+            limit=limit,
+        )
+        return [{k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in row.items()} for row in rows]
+
+    def drug_product(self, din):
+        products = self._rows(
+            """
+            SELECT p.drug_code, p.din, p.brand_name, p.company_name, p.class_name,
+                   p.last_update_date, s.status_name AS current_status
+            FROM drug_product p
+            LEFT JOIN product_status ps ON ps.drug_code = p.drug_code AND ps.is_current
+            LEFT JOIN ref_dpd_status s ON s.status_code = ps.status_code
+            WHERE p.din = :din
+            """,
+            din=din,
+        )
+        if not products:
+            return None
+        product = products[0]
+        code = product["drug_code"]
+        product["last_update_date"] = product["last_update_date"].isoformat() if product["last_update_date"] else None
+        product["ingredients"] = [
+            {**row, "strength_num": float(row["strength_num"]) if row["strength_num"] is not None else None}
+            for row in self._rows(
+                "SELECT ingredient_name, strength, strength_unit, strength_num FROM active_ingredient WHERE drug_code = :c ORDER BY ingredient_name",
+                c=code,
+            )
+        ]
+        product["forms"] = [r["form_name"] for r in self._rows("SELECT form_name FROM dosage_form WHERE drug_code = :c ORDER BY form_name", c=code)]
+        product["routes"] = [r["route_name"] for r in self._rows("SELECT route_name FROM route WHERE drug_code = :c ORDER BY route_name", c=code)]
+        return product
 
     def substitutions(self, din):
         rows = self._rows(

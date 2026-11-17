@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from services.agents.checks import filter_options
-from services.agents.data import CsvData
+from services.agents.data_source import default_data
 from services.agents.model_io import LLM, extract_json, serialize
 from services.agents.planning import PLANNING_SYSTEM_PROMPT
 from services.agents.risk import calculate_site_risk, cover_days_by_site
@@ -514,6 +514,12 @@ def _pipeline(email: str, data, llm: LLM | None, today: date):
             assessment,
         )
 
+    return _plan_for_event(event, assessment, data, llm, today, planning_registry)
+
+
+def _plan_for_event(event, assessment, data, llm, today, planning_registry):
+    """Risk calculation -> planning agent -> transfer checks, for an accepted supply event."""
+
     if data.drug(event.drug_din) is None:
         return _result(
             "needs_review",
@@ -541,7 +547,7 @@ def _pipeline(email: str, data, llm: LLM | None, today: date):
     if not risk_sites:
         return _result(
             "no_shortage_detected",
-            "Current mock inventory covers the estimated delay.",
+            "Current inventory covers the estimated delay.",
             assessment,
             delay_days=delay_days,
             cover_days=cover_days,
@@ -609,7 +615,7 @@ def process_email(email: str, data=None, llm: LLM | None = None, today: date | N
     calculation -> planning agent -> Python transfer verification -> human.
 
     data:  anything with CsvData's methods (drug, stock, orders, ...). Defaults
-           to the mock CSVs; swap in a database-backed store later.
+           to default_data(): Postgres when AGENT_DATA_SOURCE=postgres, else mock/.
     llm:   model call, defaults to Bedrock. Tests pass a fake.
     today: defaults to MOCK_TODAY or the system date.
     """
@@ -625,13 +631,36 @@ def process_email(email: str, data=None, llm: LLM | None = None, today: date | N
     try:
         return _pipeline(
             email,
-            data if data is not None else CsvData(MOCK_DIR),
+            data if data is not None else default_data(),
             llm,
             today or default_today(),
         )
     except MODEL_ERRORS as error:
         logger.exception("Pipeline failed")
         return _result("error", f"{type(error).__name__}: {error}")
+
+
+def process_event(event: SupplyEvent, data=None, llm: LLM | None = None, today: date | None = None):
+    """
+    A supply event that is already structured (e.g. from a Health Canada
+    shortage report) -> Python risk calculation -> planning agent -> Python
+    transfer verification -> human. No email, so no assessment agent.
+
+    The event must already say next_action="plan"; anything else is returned
+    for review without planning.
+    """
+
+    assessment = event.model_dump()
+    if event.next_action != "plan":
+        return _result(event.next_action, event.reason, assessment)
+
+    data = data if data is not None else default_data()
+    try:
+        _, planning_registry = build_tool_registries(data)
+        return _plan_for_event(event, assessment, data, llm, today or default_today(), planning_registry)
+    except MODEL_ERRORS as error:
+        logger.exception("Event planning failed")
+        return _result("error", f"{type(error).__name__}: {error}", assessment)
 
 
 # ---------------------------------------------------------

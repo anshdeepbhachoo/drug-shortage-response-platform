@@ -106,6 +106,13 @@ All commands from the repo root.
 
 Tests: `tests/test_agent.py` (signal → plan, fake model) and `tests/test_followup.py`.
 
+## Data source and database
+
+- `AGENT_DATA_SOURCE=postgres` (in `.env`) makes every agent entry point read from the operational tables through `PostgresData` (`db_data.py`, read-only role). Unset or `csv` keeps the mock CSVs. `data_source.default_data()` is the one switch.
+- On the database the agents get two extra read-only tools: `get_shortage_reports` (Health Canada shortage status) and `get_drug_product` (DPD record: brand, company, status, ingredients). In CSV mode the tool lists are unchanged.
+- `shortage_signals.py`: an active shortage report for a tracked drug becomes a supply event (code, no model), then goes through `agent.process_event()` (risk, planning agent, transfer checks) and is saved with `results_store`. Each report is planned once; if planning fails it stays pending. Runs as the `signals` step of `python -m ingestion.workflow nightly`, and is skipped if no model is configured.
+- CLI: `python -m services.agents.agent <email> --db --as-of 2026-11-18 --save`.
+
 ## Known issues
 
 - Nothing here is connected to the UI yet; there is no API layer.

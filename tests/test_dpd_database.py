@@ -235,12 +235,13 @@ class FakeShortageClient:
         yield {"limit": limit, **filters}, page
 
 
-def test_nightly_workflow_runs_shortages_then_dpd(engine):
+def test_nightly_workflow_runs_shortages_then_dpd(engine, monkeypatch):
+    monkeypatch.delenv("BEDROCK_MODEL_ID", raising=False)   # signals step skips; tested in test_agents_on_db.py
     tasks = nightly_tasks(shortage_client=FakeShortageClient(), dpd_client=dpd_client(catalogue_handler()))
 
     results = run_workflow("nightly", tasks, engine, {"batch_size": 50}, sleep=lambda _: None, log=lambda _: None)
 
-    assert [(r.name, r.state) for r in results] == [("shortages", "succeeded"), ("dpd", "succeeded")]
+    assert [(r.name, r.state) for r in results] == [("shortages", "succeeded"), ("dpd", "succeeded"), ("signals", "succeeded")]
     assert count(engine, "shortage_report") >= 1
     # Only the active shortage from the fixture is fetched from DPD.
     assert count(engine, "drug_product", "din = '02371234'") == 1
@@ -254,7 +255,7 @@ def test_nightly_workflow_skips_dpd_when_shortages_fail(engine):
 
     results = run_workflow("nightly", tasks, engine, sleep=lambda _: None, log=lambda _: None)
 
-    assert [(r.name, r.state) for r in results] == [("shortages", "failed"), ("dpd", "skipped")]
+    assert [(r.name, r.state) for r in results] == [("shortages", "failed"), ("dpd", "skipped"), ("signals", "skipped")]
     assert results[0].attempts == 3
     assert calls == []
     with engine.connect() as conn:

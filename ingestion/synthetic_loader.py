@@ -12,9 +12,10 @@ Usage:
   python -m ingestion.synthetic_loader --day 2026-11-19      # one progression day
   python -m ingestion.synthetic_loader --progression         # all 10 days, oldest first
 
-Loading the progression keeps every day's stock and usage as history (one
-snapshot per day). Orders and drugs are upserted, so they end as of the last
-day loaded.
+Loading the progression keeps every day's stock, usage and order list as
+history (one snapshot per day: inventory_snapshot, usage_record,
+purchase_order_snapshot). purchase_order, sites and drugs are upserted, so
+they end as of the last day loaded.
 """
 
 from __future__ import annotations
@@ -218,6 +219,15 @@ UPSERTS = {
             supplier_id = EXCLUDED.supplier_id, qty = EXCLUDED.qty, status = EXCLUDED.status,
             expected_date = EXCLUDED.expected_date, source_ref = EXCLUDED.source_ref
     """,
+    # Each feed date's order list, so orders can be read as of any loaded day.
+    "purchase_order_snapshot": """
+        INSERT INTO purchase_order_snapshot (order_id, as_of, din, site_id, supplier_id, qty, status,
+                                             expected_date, source_ref)
+        VALUES (:order_id, :as_of, :din, :site_id, :supplier_id, :qty, :status, :expected_date, :source_ref)
+        ON CONFLICT (order_id, as_of) DO UPDATE SET din = EXCLUDED.din, site_id = EXCLUDED.site_id,
+            supplier_id = EXCLUDED.supplier_id, qty = EXCLUDED.qty, status = EXCLUDED.status,
+            expected_date = EXCLUDED.expected_date, source_ref = EXCLUDED.source_ref
+    """,
     "substitution": """
         INSERT INTO substitution (din, substitute_din, note, source, approved)
         VALUES (:din, :substitute_din, :note, :source, :approved)
@@ -270,6 +280,13 @@ def _load_file(conn: Connection, run_id: int, folder: Path, name: str, table: st
             conn.execute(text(UPSERTS["supplier"]), {"supplier_id": row["supplier_id"], "name": row["supplier_name"]})
 
         conn.execute(text(UPSERTS[table]), {**row, "source_ref": f"snapshot:{snapshot_id}"})
+        if table == "purchase_order":
+            # open_orders.csv has no date: it is the order list as of the inventory snapshot.
+            conn.execute(text(UPSERTS["purchase_order_snapshot"]), {
+                **row,
+                "as_of": known["as_of"] or date.today().isoformat(),
+                "source_ref": f"snapshot:{snapshot_id}",
+            })
         stats["rows_ok"] += 1
 
         if table == "site":
