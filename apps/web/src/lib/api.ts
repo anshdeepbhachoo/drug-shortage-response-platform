@@ -13,6 +13,25 @@ export interface LiveState extends LiveCatalog {
   daysRun: string[];
   inbox: string[];
   loadedDays: string[];
+  dayReports?: Record<string, DaySummary>;
+  followups?: FollowUp[];
+}
+
+/** One approved transfer and the follow-up agent's latest check on it. */
+export interface FollowUp {
+  id: string;
+  drugId: string;
+  drug: string;
+  from: string;
+  to: string;
+  units: number;
+  approvedAt: string;
+  decision: "wait" | "nudge" | "escalate" | "replan" | "close" | null;
+  status: string;
+  confirmed?: number | null;
+  hoursOverdue?: number | null;
+  checkedAt?: string | null;
+  reason: string;
 }
 
 export interface DaySummary {

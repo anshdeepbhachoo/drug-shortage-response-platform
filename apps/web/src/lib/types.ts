@@ -106,6 +106,9 @@ export interface Plan {
   /** Live data: hospitals this option involves (at risk, or sending/receiving stock). */
   sites?: string[];
   createdAt?: string;
+  /** Live data: what kind of option this is, and which roles may choose it. */
+  optionType?: "transfer" | "order" | "substitute" | "conserve" | "escalate";
+  chooseRoles?: Role[];
 }
 
 export interface Extraction {

@@ -257,3 +257,22 @@ def test_restore_cover_waits_for_the_delivery_but_adds_no_delay():
 
     assert delayed == {"A": 34, "B": 17}            # a supplier delay pushes every delivery back
     assert restored == {"A": 20, "B": 14}           # restore: until the next delivery, at least 14 days
+
+
+def test_every_option_type_is_checked_and_failures_are_dropped():
+    from services.agents.checks import check_options
+
+    stock = {"A": {"on_hand": 20, "daily_use": 10}, "B": {"on_hand": 400, "daily_use": 8}}
+    options = [
+        PlanOption(type="transfer", description="t", moves=[Move(from_site="B", to_site="A", units=180)], reasoning="r"),
+        PlanOption(type="transfer", description="too much", moves=[Move(from_site="B", to_site="A", units=390)], reasoning="r"),
+        PlanOption(type="substitute", description="Use DIN 99000008", reasoning="approved"),
+        PlanOption(type="substitute", description="Use DIN 12345678", reasoning="not in the table"),
+        PlanOption(type="conserve", description="Cut use at A", reasoning="r"),
+        PlanOption(type="escalate", description="Hand to a manager", reasoning="r"),
+    ]
+
+    passed, failed = check_options(options, stock, {"A": 180}, drug_din="99000011", approved_substitutes={"99000008"})
+
+    assert [o.description for o in passed] == ["t", "Use DIN 99000008", "Cut use at A", "Hand to a manager"]
+    assert sorted(failed) == [1, 3] and "not an approved substitute" in failed[3][0]

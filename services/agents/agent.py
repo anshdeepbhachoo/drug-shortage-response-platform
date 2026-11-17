@@ -11,7 +11,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from services.agents.checks import filter_options
+from services.agents.checks import check_options
 from services.agents.data_source import default_data
 from services.agents.model_io import LLM, extract_json, serialize
 from services.agents.planning import PLANNING_SYSTEM_PROMPT
@@ -566,6 +566,10 @@ def _plan_for_event(event, assessment, data, llm, today, planning_registry, plan
         for row in stock_rows
     }
 
+    approved_substitutes = {
+        str(record["substitute_din"]) for record in data.substitutions(event.drug_din)
+        if str(record.get("approved", "")).lower() in {"yes", "true", "1"}
+    }
     feedback = None
 
     for attempt in range(2):
@@ -584,14 +588,18 @@ def _plan_for_event(event, assessment, data, llm, today, planning_registry, plan
                 llm=llm,
             )
 
-        verified, rejected = filter_options(
+        # Every option a person could choose is checked; failures are never offered.
+        verified, rejected = check_options(
             options=plan.options,
             stock=current_stock,
             shortfall=shortfall,
             reserve_days=cover_days,
+            drug_din=event.drug_din,
+            approved_substitutes=approved_substitutes,
         )
 
-        if verified or attempt == 1:
+        # Ask the planner again only when no transfer survived the checks.
+        if any(option.type == "transfer" for option in verified) or attempt == 1:
             break
 
         # Give the planner the checker's reasons for transfer options only.

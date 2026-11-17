@@ -35,13 +35,15 @@ from sqlalchemy.exc import ProgrammingError
 from services.agents.checks import check_transfer
 from services.agents.schemas import Move, PlanOption
 
-# Who may approve each kind of action. Escalations are a hand-off to a person,
-# not something to approve, so they are not listed.
+# Who may choose each kind of option. The supply manager can choose any option
+# except a substitution, which changes what patients receive and needs a pharmacist.
+# Choosing "escalate" records who took the problem on.
 APPROVER_ROLES: dict[str, set[str]] = {
     "transfer": {"pharmacy_manager", "supply_manager"},
     "order": {"procurement", "supply_manager"},
-    "substitute": {"pharmacist"},   # clinical decision
-    "conserve": {"pharmacist"},     # clinical decision
+    "substitute": {"pharmacist"},                                       # clinical decision
+    "conserve": {"pharmacist", "pharmacy_manager", "supply_manager"},
+    "escalate": {"pharmacist", "pharmacy_manager", "supply_manager"},
 }
 ALL_ROLES = set().union(*APPROVER_ROLES.values())
 DEFAULT_FLOOR_DAYS = 14
@@ -191,9 +193,7 @@ def approve_plan(
         kind = actions[0]["type"]
         if not all(a["verified"] for a in actions):
             raise ApprovalError(f"Option {option} ({kind}) did not pass the checks and cannot be approved.")
-        allowed = APPROVER_ROLES.get(kind)
-        if allowed is None:
-            raise ApprovalError(f"Option {option} is an {kind}: it goes to a person, there is nothing to approve.")
+        allowed = APPROVER_ROLES.get(kind, set())
         if role not in allowed:
             raise ApprovalError(f"A {role} cannot approve a {kind}; needs one of {sorted(allowed)}.")
 

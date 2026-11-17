@@ -1,3 +1,5 @@
+import re
+
 from services.agents.schemas import PlanOption
 
 
@@ -116,3 +118,49 @@ def filter_options(
             verified.append(option)
 
     return verified, rejected
+
+DIN_PATTERN = re.compile(r"\b\d{8}\b")
+
+
+def check_substitute(option: PlanOption, drug_din: str, approved_substitutes: set[str]) -> list[str]:
+    """A substitute must name a DIN from the drug's pre-approved substitution table, and nothing else."""
+
+    named = set(DIN_PATTERN.findall(f"{option.description} {option.reasoning}")) - {drug_din}
+    if not named:
+        return ["Names no substitute DIN, so it cannot be matched to the approved substitution table."]
+    unapproved = sorted(named - approved_substitutes)
+    if unapproved:
+        return [f"DIN {', '.join(unapproved)} is not an approved substitute for {drug_din}."]
+    return []
+
+
+def check_options(
+    options: list[PlanOption],
+    stock: dict,
+    shortfall: dict,
+    reserve_days: dict | None = None,
+    drug_din: str = "",
+    approved_substitutes: set[str] | None = None,
+) -> tuple[list[PlanOption], dict]:
+    """Check every option a person could choose. Returns (passed, {index: problems}).
+
+    transfer:   the transfer rules (check_transfer).
+    substitute: only from the pre-approved substitution table (check_substitute).
+    conserve:   nothing to compute; a clinical judgement, chosen by a person.
+    escalate:   a hand-off to a person; nothing to compute.
+    Options that fail are never offered for approval.
+    """
+
+    passed, failed = [], {}
+    for index, option in enumerate(options):
+        if option.type == "transfer":
+            problems = check_transfer(option, stock, shortfall, reserve_days=reserve_days)
+        elif option.type == "substitute":
+            problems = check_substitute(option, drug_din, approved_substitutes or set())
+        else:
+            problems = []
+        if problems:
+            failed[index] = problems
+        else:
+            passed.append(option)
+    return passed, failed
