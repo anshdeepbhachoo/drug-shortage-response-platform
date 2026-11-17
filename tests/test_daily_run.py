@@ -79,8 +79,9 @@ def test_rules_planner_plans_are_checked_like_any_other(engine):
     summary = run_day(engine, engine, NOV15, inbox={}, max_plans=3)
 
     statuses = {a["drug"].split()[0]: a["status"] for a in summary["stock_watch"]["alerts"]}
-    # Propofol is short at all six sites (scenario C): nothing can be transferred.
-    assert statuses["Propofol"] == "no_verified_plan"
+    # Propofol is short at all six sites (scenario C): nothing can be transferred, so the
+    # plan offers the escalation, which a person can choose.
+    assert statuses["Propofol"] == "plan_generated"
     assert rows(engine, """SELECT count(*) FROM plan_action a JOIN plan p USING (plan_id)
                            JOIN supply_event e USING (event_id)
                            WHERE e.source_type = 'stock_watch' AND a.type = 'escalate'""")[0][0] >= 1
@@ -223,9 +224,9 @@ def test_email_joins_the_drugs_alert_and_replaces_its_plan(engine):
 
     day2 = run_day(engine, engine, NOV16, llm=model, planner="rules", inbox={"2026-11-16": ["delay_epinephrine.txt"]})
 
-    assert day2["emails"][0]["status"] == "no_verified_plan (updated the drug's existing alert)"
+    assert day2["emails"][0]["status"] == "plan_generated (updated the drug's existing alert)"
     assert rows(engine, "SELECT count(*) FROM supply_event WHERE din = '99000011'") == [(1,)]
-    assert [status for (status,) in plans_for(engine, "99000011")] == ["superseded", "proposed"]
+    assert [status for (status,) in plans_for(engine, "99000011")] == ["superseded", "pending_approval"]
     [(evidence,)] = rows(engine, "SELECT detail->'evidence' FROM supply_event WHERE din = '99000011'")
     assert [e["source"] for e in evidence] == ["stock_watch", "supplier_email"]
 
@@ -304,3 +305,21 @@ def test_api_rejection_uses_the_simulated_day(engine):
 
     assert rows(engine, "SELECT decided_at::date FROM decision") == [(NOV16,)]
     assert rows(engine, "SELECT at::date FROM audit_log WHERE action = 'Rejected'") == [(NOV16,)]
+
+
+def test_home_page_gets_day_reports_and_followups_in_plain_words(engine):
+    model = FakeModel(assessments=[assessment()], plans=[transfer("B", 180)])
+    run_day(engine, engine, NOV15, llm=model, planner="rules", inbox={"2026-11-15": ["clear.txt"]})
+    [(plan_id,)] = rows(engine, """SELECT p.plan_id FROM plan p JOIN supply_event e USING (event_id)
+                                   WHERE e.source_type = 'supplier_email'""")
+    approve_plan(engine, plan_id, "Dana Okafor", "supply_manager", PostgresData(engine, as_of=NOV15),
+                 at=datetime(2026, 11, 15, 12))
+    run_day(engine, engine, NOV16, llm=FakeModel(), planner="rules", inbox={})
+
+    state = TestClient(create_app(engine, engine)).get("/api/state", params={"as_of": "2026-11-16"}).json()
+
+    assert set(state["dayReports"]) == {"2026-11-15", "2026-11-16"}
+    assert state["dayReports"]["2026-11-16"]["followup"] == [{"transfer": f"{plan_id}-O1", "decision": "nudge"}]
+    [follow] = state["followups"]
+    assert (follow["from"], follow["to"], follow["units"], follow["decision"]) == ("Northside", "Central General", 180, "nudge")
+    assert follow["status"] == "Nudged: no confirmation yet"

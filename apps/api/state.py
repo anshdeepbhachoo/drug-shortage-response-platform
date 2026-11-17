@@ -18,6 +18,7 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from services.agents.approvals import APPROVER_ROLES
 from services.agents.db_data import PostgresData
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -191,14 +192,26 @@ def _option_status(plan: dict, index: int, verified: bool) -> str:
     return "proposed"
 
 
+# UI role names, as the app's role picker uses them.
+UI_ROLE_OF = {"supply_manager": "supply", "pharmacist": "pharmacist", "procurement": "procurement"}
+LEAD_TIME = {"substitute": "A pharmacist decides", "conserve": "Starts when chosen", "escalate": "Hands it to a person"}
+
+
 def plan_cards(plans: list[dict]) -> list[dict]:
-    """One UI plan card per option. Card id "<plan_id>-O<n>" maps back for approve/reject."""
+    """One UI plan card per option. Card id "<plan_id>-O<n>" maps back for approve/reject.
+
+    Options that failed their checks are left out, so every option shown can be chosen.
+    Only a plan where nothing passed shows its options, so the problem is still visible.
+    """
 
     cards = []
     for plan in plans:
+        passed = {i for i, acts in plan["options"].items() if all(a["verified"] for a in acts)}
         for index, actions in sorted(plan["options"].items()):
             first = actions[0]
-            verified = all(a["verified"] for a in actions)
+            verified = index in passed
+            if passed and not verified:
+                continue
             transfers = [{"from": a["from_site"], "to": a["to_site"], "qty": a["units"]} for a in actions if a["units"]]
             # Hospitals this option involves: the ones at risk and any it moves stock between.
             sites = set((plan["detail"] or {}).get("risk_sites") or [])
@@ -209,7 +222,9 @@ def plan_cards(plans: list[dict]) -> list[dict]:
                 "title": first["description"], "transfers": transfers, "orders": [],
                 "score": round(max(0.1, (0.95 if verified else 0.4) - 0.05 * (index - 1)), 2),
                 "cost": "≈ $0 (courier transfer)" if transfers else "No cost estimate",
-                "leadTime": "Tomorrow by courier" if transfers else ("Needs a pharmacist" if first["type"] in ("substitute", "conserve") else "Needs a person"),
+                "leadTime": "Tomorrow by courier" if transfers else LEAD_TIME.get(first["type"], "Needs a person"),
+                "optionType": first["type"],
+                "chooseRoles": sorted(UI_ROLE_OF[r] for r in APPROVER_ROLES.get(first["type"], set()) if r in UI_ROLE_OF),
                 "explanation": first["reasoning"] or "",
                 "citations": [plan["event_id"], plan["plan_id"]],
                 "status": _option_status(plan, index, verified),
@@ -394,11 +409,59 @@ def _inbox_for(day: date) -> list[str]:
     return load_inbox().get(day.isoformat(), [])
 
 
+FOLLOWUP_STATUS = {
+    "wait": "On track: not due yet",
+    "nudge": "Nudged: no confirmation yet",
+    "escalate": "Escalated to a person",
+    "replan": "Not happening: being replanned",
+    "close": "Done",
+}
+
+
+def followups(conn, names: dict[str, str], site_names: dict[str, str]) -> list[dict]:
+    """Every approved transfer, with the follow-up agent's latest check in plain words."""
+
+    moves = _rows(conn, """
+        SELECT a.action_id, a.from_site, a.to_site, a.units, e.din, d.decided_at
+        FROM plan_action a
+        JOIN plan p USING (plan_id)
+        JOIN decision d ON d.plan_id = p.plan_id AND d.decision = 'approved' AND d.option_index = a.option_index
+        JOIN supply_event e ON e.event_id = p.event_id
+        WHERE a.type = 'transfer'
+        ORDER BY d.decided_at DESC, a.action_id""")
+    latest = {r["object"]: r for r in _rows(conn, """
+        SELECT DISTINCT ON (object) object, action, detail
+        FROM audit_log WHERE actor = 'follow-up-agent'
+        ORDER BY object, audit_id DESC""")}
+    result = []
+    for m in moves:
+        check = latest.get(m["action_id"])
+        detail = (check or {}).get("detail") or {}
+        facts = detail.get("facts") or {}
+        decision = check["action"].removeprefix("Follow-up: ") if check else None
+        result.append({
+            "id": m["action_id"], "drugId": m["din"], "drug": names.get(m["din"], m["din"]),
+            "from": site_names.get(m["from_site"], m["from_site"]), "to": site_names.get(m["to_site"], m["to_site"]),
+            "units": m["units"], "approvedAt": m["decided_at"].isoformat(),
+            "decision": decision,
+            "status": FOLLOWUP_STATUS.get(decision, decision) if decision else "Not checked yet: follow-up runs each evening",
+            "confirmed": facts.get("units_confirmed"), "hoursOverdue": facts.get("hours_overdue"),
+            "checkedAt": detail.get("at"),
+            "reason": detail.get("reason", ""),
+        })
+    return result
+
+
 def build_state(engine: Engine, as_of: date | None = None) -> dict:
     days = available_days(engine)
     if not days:
         raise LookupError("No scenario days and no stock loaded. Run: python -m ingestion.synthetic_loader --progression")
-    as_of = as_of or days[0]
+    if as_of is None:
+        # Open where the user left off: the day after the last one run (or the last day).
+        with engine.connect() as conn:
+            last = conn.execute(text("SELECT max(object) FROM audit_log WHERE action = 'Daily run'")).scalar()
+        later = [d for d in days if last and d.isoformat() > last]
+        as_of = later[0] if later else (days[-1] if last else days[0])
     start = scenario_start(as_of)
     data = PostgresData(engine, as_of=as_of)
 
@@ -423,6 +486,11 @@ def build_state(engine: Engine, as_of: date | None = None) -> dict:
             "audit": audit_entries(conn, start, {site["id"]: site["name"] for site in sites}),
             "ingestion": ingestion(conn),
             "daysRun": [r["object"] for r in _rows(conn, "SELECT DISTINCT object FROM audit_log WHERE action = 'Daily run' ORDER BY object")],
+            # Each day's report (the latest run of that day), for the Home page.
+            "dayReports": {r["object"]: r["detail"] for r in _rows(conn, """
+                SELECT DISTINCT ON (object) object, detail FROM audit_log
+                WHERE action = 'Daily run' ORDER BY object, audit_id DESC""")},
+            "followups": followups(conn, names, {site["id"]: site["name"] for site in sites}),
             "inbox": _inbox_for(as_of),
             "sources": sources(conn, events, raw_plans, stock),
         }

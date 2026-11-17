@@ -20,6 +20,30 @@ const LIVE_TEXT: Partial<Record<PlanStatus, string>> = {
   superseded: "Not chosen",
 };
 
+/** Live: what an option that moves no stock means, and what the server checked. */
+const NON_TRANSFER: Record<string, { moves: string; check: string; checkDetail: string }> = {
+  substitute: {
+    moves: "No stock moves. Patients get the substitute drug instead; a pharmacist decides.",
+    check: "Substitute is in the pre-approved substitution table",
+    checkDetail: "Checked against the table; anything not in it is never offered",
+  },
+  conserve: {
+    moves: "No stock moves. The at-risk hospitals cut how much they use until supply recovers.",
+    check: "Nothing to calculate: a judgement call",
+    checkDetail: "Choosing it records who decided; the clinical teams set the new usage",
+  },
+  escalate: {
+    moves: "No stock moves. A person takes this on: calls the supplier, places an emergency order or arranges conservation.",
+    check: "Nothing to calculate: a hand-off to a person",
+    checkDetail: "Choosing it records who took the problem on",
+  },
+  order: {
+    moves: "A new order is placed with a supplier.",
+    check: "Order details are confirmed by procurement",
+    checkDetail: "Nothing is sent from here",
+  },
+};
+
 export function planStatus(status: PlanStatus, live: boolean) {
   const base = PLAN_STATUS[status];
   return live && LIVE_TEXT[status] ? { ...base, text: LIVE_TEXT[status]! } : base;
@@ -47,7 +71,12 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
   const { state } = useStore();
   const event = state.events.find((e) => e.id === plan.eventId)!;
   const drug = drugById(plan.drugId);
-  const { checks, feasible } = evaluatePlan(plan, state.stock, event, siteName, dayLabel, drug.unit);
+  const kind = state.live ? plan.optionType : undefined;
+  const nonTransfer = kind !== undefined && kind !== "transfer" ? NON_TRANSFER[kind] : undefined;
+  // Options that move no stock were checked by the server for what they are; the stock maths does not apply.
+  const { checks, feasible } = nonTransfer
+    ? { checks: [{ label: nonTransfer.check, ok: true, hard: true, detail: nonTransfer.checkDetail }], feasible: true }
+    : evaluatePlan(plan, state.stock, event, siteName, dayLabel, drug.unit);
   const hard = checks.filter((c) => c.hard);
   const soft = checks.filter((c) => !c.hard);
   const after = applyPlan(state.stock, plan, event.siteId);
@@ -97,6 +126,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
                   <span className="to">{siteName(event.siteId ?? "")}</span>
                 </div>
               ))}
+              {nonTransfer && <p className="small ink-2">{nonTransfer.moves}</p>}
               {plan.conservationUsage !== undefined && (
                 <p className="small ink-2">Lakeshore also cuts daily use to {plan.conservationUsage} {drug.unit}.</p>
               )}

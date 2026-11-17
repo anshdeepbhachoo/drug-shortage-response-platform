@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { dayLabel } from "../data/mock";
-import { api, type DaySummary, type Planner } from "../lib/api";
+import { api, type DaySummary, type FollowUp, type Planner } from "../lib/api";
 import { useStore } from "../lib/store";
 
 const PLANNERS: { id: Planner; label: string }[] = [
@@ -20,6 +20,7 @@ export function LiveBar() {
   const busy = live.busy !== null;
   const alreadyRun = daysRun.includes(asOf);
   const isLast = days.indexOf(asOf) === days.length - 1;
+  const report = latestReport(state.live?.dayReports ?? {}, daysRun, asOf, live.lastDay);
 
   // Auto-run: keep running the selected day and moving on until every day has run.
   useEffect(() => {
@@ -100,10 +101,10 @@ export function LiveBar() {
         <Advanced />
       </div>
 
-      {(live.busy || live.notice || live.error || live.lastDay) && (
+      {(live.busy || live.notice || live.error || report) && (
         <div className="live-status" role="status" aria-live="polite">
           {live.busy && <span className="meta">{live.busy}… with the AI this takes a minute or two per day.</span>}
-          {live.lastDay && !live.busy && <DayReport summary={live.lastDay} />}
+          {report && !live.busy && <DayReport summary={report} />}
           {live.notice && (
             <div className="callout good">
               <span className="ico" aria-hidden>
@@ -134,8 +135,55 @@ export function LiveBar() {
   );
 }
 
+/** The report of the latest day run up to the one shown (the run just made wins). */
+export function latestReport(reports: Record<string, DaySummary>, daysRun: string[], asOf: string, justRun: DaySummary | null) {
+  if (justRun) return justRun;
+  const day = daysRun.filter((d) => d <= asOf).at(-1);
+  return day ? reports[day] ?? null : null;
+}
+
+const DECISION_WORDS: Record<string, string> = {
+  wait: "on track, not due yet",
+  nudge: "nudged, no confirmation yet",
+  escalate: "escalated to a person",
+  replan: "not happening, replanning",
+  close: "done",
+};
+
+/** "Epinephrine: Northside → Central General, 132 units: escalated to a person". decision: that day's, else the latest. */
+export function followupLine(f: FollowUp, decision?: string) {
+  const word = decision ? DECISION_WORDS[decision] ?? decision : f.status.toLowerCase();
+  return `${f.drug.split(" ")[0]}: ${f.from} → ${f.to}, ${f.units} units: ${word}`;
+}
+
+/** Compact clock for every page but Home: the day, and running it. */
+export function DayControl({ openHome }: { openHome: () => void }) {
+  const { state, live } = useStore();
+  const asOf = state.live?.asOf ?? "";
+  const alreadyRun = (state.live?.daysRun ?? []).includes(asOf);
+  return (
+    <div className="day-control" role="region" aria-label="Simulated clock">
+      <span className="badge-accent">Live</span>
+      <span className="small">
+        Simulated day <b>{dayLabel(0)}</b> · {alreadyRun ? "already run" : "not run yet"}
+      </span>
+      {live.busy && <span className="meta">{live.busy}…</span>}
+      {live.error && <span className="small" style={{ color: "var(--crit-text)" }}>Not done: {live.error}</span>}
+      <span style={{ flex: 1 }} />
+      <button className="link small" onClick={openHome}>
+        Day report on Home
+      </button>
+      <button className="btn primary" onClick={() => void live.runDay(asOf, "auto")} disabled={live.busy !== null || alreadyRun}>
+        {alreadyRun ? `${dayLabel(0)} done` : `Run ${dayLabel(0)} ▶`}
+      </button>
+    </div>
+  );
+}
+
 /** What the last simulated day did, in plain words. */
 function DayReport({ summary }: { summary: DaySummary }) {
+  const { state } = useStore();
+  const byId = new Map((state.live?.followups ?? []).map((f) => [f.id, f]));
   const watch = summary.stock_watch;
   return (
     <div className="callout info">
@@ -164,7 +212,9 @@ function DayReport({ summary }: { summary: DaySummary }) {
           <li>Health Canada reports: {summary.shortage_reports.reports ? `${summary.shortage_reports.reports} planned` : "nothing new for our drugs"}</li>
           <li>
             Follow-up:{" "}
-            {summary.followup.length ? summary.followup.map((f) => `${f.transfer} → ${f.decision}`).join("; ") : "no approved transfers to check"}
+            {summary.followup.length
+              ? summary.followup.map((f) => (byId.has(f.transfer) ? followupLine(byId.get(f.transfer)!, f.decision) : `${f.transfer}: ${f.decision}`)).join("; ")
+              : "no approved transfers to check"}
           </li>
         </ul>
       </div>

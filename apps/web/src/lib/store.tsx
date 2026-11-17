@@ -10,7 +10,7 @@ import {
   siteName,
   applyLiveData,
 } from "../data/mock";
-import { api, type DaySummary, type LiveState, type Planner } from "./api";
+import { api, type DaySummary, type FollowUp, type LiveState, type Planner } from "./api";
 import type { AuditEntry, Draft, Email, Plan, Role, StockLine, SupplyEvent } from "./types";
 
 export const STEPS = [
@@ -37,7 +37,15 @@ export interface State {
   audit: AuditEntry[];
   auditSeq: number;
   /** Set when the data comes from the API (database) instead of the scripted story. */
-  live: { asOf: string; days: string[]; daysRun: string[]; inbox: string[]; loadedDays: string[] } | null;
+  live: {
+    asOf: string;
+    days: string[];
+    daysRun: string[];
+    inbox: string[];
+    loadedDays: string[];
+    dayReports: Record<string, DaySummary>;
+    followups: FollowUp[];
+  } | null;
 }
 
 type Action =
@@ -249,7 +257,15 @@ function reducer(state: State, action: Action): State {
     const { data } = action;
     return {
       ...state,
-      live: { asOf: data.asOf, days: data.days, daysRun: data.daysRun ?? [], inbox: data.inbox ?? [], loadedDays: data.loadedDays ?? [] },
+      live: {
+        asOf: data.asOf,
+        days: data.days,
+        daysRun: data.daysRun ?? [],
+        inbox: data.inbox ?? [],
+        loadedDays: data.loadedDays ?? [],
+        dayReports: data.dayReports ?? {},
+        followups: data.followups ?? [],
+      },
       step: 0,
       clockMin: 0,
       stock: data.stock,

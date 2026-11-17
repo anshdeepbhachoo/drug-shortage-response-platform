@@ -3,7 +3,7 @@ import { PAGE_TIPS, SHELL_TIPS, Tour } from "./components/Tour";
 import { SourceProvider } from "./components/ui";
 import { Welcome } from "./components/Welcome";
 import { USERS, timeLabel } from "./data/mock";
-import { LiveBar } from "./components/LiveBar";
+import { DayControl } from "./components/LiveBar";
 import { STEPS, useStore } from "./lib/store";
 import type { Role } from "./lib/types";
 import { Approvals } from "./views/Approvals";
@@ -11,12 +11,14 @@ import { Audit } from "./views/Audit";
 import { DataSources } from "./views/DataSources";
 import { Drafts } from "./views/Drafts";
 import { Events } from "./views/Events";
+import { Home } from "./views/Home";
 import { Plans } from "./views/Plans";
 import { RiskBoard } from "./views/RiskBoard";
 
-export type ViewId = "board" | "events" | "plans" | "approvals" | "drafts" | "audit" | "data";
+export type ViewId = "home" | "board" | "events" | "plans" | "approvals" | "drafts" | "audit" | "data";
 
 const NAV: { id: ViewId; label: string; roles: Role[] }[] = [
+  { id: "home", label: "Home", roles: ["supply", "pharmacist", "procurement", "auditor"] },
   { id: "board", label: "Stock", roles: ["supply", "pharmacist", "procurement", "auditor"] },
   { id: "events", label: "Alerts", roles: ["supply", "pharmacist", "auditor"] },
   { id: "plans", label: "Plans", roles: ["supply", "pharmacist", "procurement", "auditor"] },
@@ -112,10 +114,10 @@ export function App() {
         /* storage unavailable: the welcome may show again next visit */
       }
       if (role !== state.role) dispatch({ type: "role", role });
-      setView(HOME[role]);
+      setView(homeFor(role));
       setTouring(tour);
     },
-    [state.role, dispatch],
+    [state.role, dispatch, live.mode],
   );
   const endTour = useCallback(() => {
     setTouring(false);
@@ -134,14 +136,22 @@ export function App() {
       }
       return !o;
     });
+  // Live mode opens on the Home dashboard; the scripted demo keeps each role's own start page.
+  const homeFor = (role: Role): ViewId => (live.mode === "live" ? "home" : HOME[role]);
   const [view, setView] = useState<ViewId>(() => {
     const requested = new URLSearchParams(window.location.search).get("view");
-    return NAV.some((n) => n.id === requested) ? (requested as ViewId) : HOME[state.role];
+    return NAV.some((n) => n.id === requested) ? (requested as ViewId) : homeFor(state.role);
   });
+
+  // The app learns it is live after the first load: open on Home then, unless a page was asked for in the URL.
+  useEffect(() => {
+    if (live.mode === "live" && !new URLSearchParams(window.location.search).get("view")) setView("home");
+  }, [live.mode]);
 
   const counts: Partial<Record<ViewId, number>> = {
     events: state.events.filter((e) => e.status === "open").length,
-    approvals: state.plans.filter((p) => p.status === "pending-approval").length,
+    // One decision per plan: count plans, not their options.
+    approvals: new Set(state.plans.filter((p) => p.status === "pending-approval").map((p) => (state.live ? p.solverRun : p.id))).size,
     drafts: state.drafts.filter((d) => d.status === "draft").length,
   };
 
@@ -155,7 +165,7 @@ export function App() {
 
   const switchRole = (role: Role) => {
     dispatch({ type: "role", role });
-    go(HOME[role]);
+    go(homeFor(role));
   };
 
   const next = () => {
@@ -171,8 +181,8 @@ export function App() {
 
   const atEnd = state.step === STEPS.length - 1;
   const story = STORY[state.step];
-  const visibleNav = NAV.filter((n) => n.roles.includes(state.role));
-  const activeView = visibleNav.some((n) => n.id === view) ? view : HOME[state.role];
+  const visibleNav = NAV.filter((n) => n.roles.includes(state.role) && (n.id !== "home" || live.mode === "live"));
+  const activeView = visibleNav.some((n) => n.id === view) ? view : homeFor(state.role);
   const tourSteps = useMemo(() => [...SHELL_TIPS, ...(PAGE_TIPS[activeView] ?? [])], [activeView]);
 
   return (
@@ -231,7 +241,7 @@ export function App() {
 
       <main className="page">
         {live.mode === "live" ? (
-          <LiveBar />
+          activeView !== "home" && <DayControl openHome={() => go("home")} />
         ) : (
           <section className="story" aria-label="Demo story">
             <div className="story-top">
@@ -275,6 +285,7 @@ export function App() {
           </section>
         )}
 
+        {activeView === "home" && <Home go={(v) => go(v)} />}
         {activeView === "board" && (
           <RiskBoard
             go={(v, eventId) => {

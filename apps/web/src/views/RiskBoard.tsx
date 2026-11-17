@@ -24,12 +24,14 @@ export function RiskBoard({ go }: { go: (view: string, focusEvent?: string) => v
   const risky = cells.filter((c) => c.tier !== "green").sort((a, b) => a.days - b.days);
   const red = cells.filter((c) => c.tier === "red").length;
   const amber = cells.filter((c) => c.tier === "amber").length;
-  const pending = state.plans.filter((p) => p.status === "pending-approval").length;
+  // One decision per plan: count plans, not their options (same as the Approvals badge).
+  const pending = new Set(state.plans.filter((p) => p.status === "pending-approval").map((p) => (state.live ? p.solverRun : p.id))).size;
   // Live: an alert stays on the board until it is closed, including after its plan is approved.
   const openEvents = state.events.filter((e) => e.status === "open" || (state.live && e.status === "mitigated")).length;
   const broken = state.plans.filter((p) => p.status === "broken");
 
   const [selected, setSelected] = useState<Key | null>(null);
+  const [tab, setTab] = useState<"attention" | "all">("attention");
 
   if (cells.length === 0) {
     return (
@@ -90,42 +92,19 @@ export function RiskBoard({ go }: { go: (view: string, focusEvent?: string) => v
         <Stat value={pending} label="Waiting for approval" tone={pending ? "warn" : "neutral"} onClick={() => go("approvals")} />
       </div>
 
-      {risky.length > 0 && (
-        <section>
-          <div className="section-head">
-            <h2>Needs attention</h2>
-            <span className="meta">sorted by soonest to run out</span>
-          </div>
-          <div className="attention">
-            {risky.map((c) => {
-              const drug = drugById(c.line.drugId);
-              return (
-                <button key={`${c.line.drugId}-${c.line.siteId}`} className="attention-item" onClick={() => pick({ drugId: c.line.drugId, siteId: c.line.siteId })}>
-                  <span className="big">{formatDays(c.days)}</span>
-                  <span>
-                    <strong>
-                      {drug.name} at {siteName(c.line.siteId)}
-                    </strong>
-                    <div className="small ink-2">
-                      Runs out {runOutLabel(c.days)} at {c.line.dailyUsage} {drug.unit} a day.
-                      {state.live && <ProblemNote drugId={c.line.drugId} siteId={c.line.siteId} />}
-                      {c.changed && (
-                        <>
-                          {" "}
-                          With the approved plan: <Change was={`${formatDays(c.days)} days`} now={`${formatDays(c.after)} days`} />
-                        </>
-                      )}
-                    </div>
-                  </span>
-                  <TierStatus tier={c.tier} />
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
+      <div className="view-tabs" role="tablist" aria-label="Stock views">
+        <button role="tab" aria-selected={tab === "attention"} className={tab === "attention" ? "active" : ""} onClick={() => setTab("attention")}>
+          Needs attention <span className="num muted">{new Set(risky.map((c) => c.line.drugId)).size} drugs</span>
+        </button>
+        <button role="tab" aria-selected={tab === "all"} className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>
+          All stock <span className="num muted">{DRUGS.length} drugs</span>
+        </button>
+      </div>
 
       <div className="grid-2">
+        {tab === "attention" ? (
+          <Attention risky={risky} selected={sel} pick={pick} />
+        ) : (
         <Card
           label="Days of stock left, per hospital"
           title="All drugs, lowest first"
@@ -219,6 +198,7 @@ export function RiskBoard({ go }: { go: (view: string, focusEvent?: string) => v
             </tbody>
           </table>
         </Card>
+        )}
 
         <div id="detail">
           <CellDetail line={selCell.line} projected={selProjected} openPlan={(eventId) => go("plans", eventId)} />
@@ -226,6 +206,75 @@ export function RiskBoard({ go }: { go: (view: string, focusEvent?: string) => v
       </div>
 
     </>
+  );
+}
+
+type Cell = { line: StockLine; days: number; after: number; tier: Tier; changed: boolean };
+
+/** One row per drug in trouble, worst hospital first; open a row to see each hospital. */
+function Attention({ risky, selected, pick }: { risky: Cell[]; selected: Key; pick: (k: Key) => void }) {
+  const { state } = useStore();
+  const [open, setOpen] = useState<string | null>(null);
+  const byDrug = new Map<string, Cell[]>();
+  for (const c of risky) byDrug.set(c.line.drugId, [...(byDrug.get(c.line.drugId) ?? []), c]);
+  const drugs = [...byDrug.entries()];  // risky is sorted soonest first, so drugs are too
+  if (drugs.length === 0) return <Empty title="Nothing needs attention">Every drug has at least 14 days at every hospital.</Empty>;
+  return (
+    <div className="attention">
+      {drugs.map(([drugId, hospitals]) => {
+        const drug = drugById(drugId);
+        const worst = hospitals[0];
+        const isOpen = open === drugId;
+        return (
+          <div key={drugId} className={`attention-drug ${isOpen ? "open" : ""}`}>
+            <button
+              className="attention-item"
+              aria-expanded={isOpen}
+              onClick={() => {
+                setOpen(isOpen ? null : drugId);
+                pick({ drugId, siteId: worst.line.siteId });
+              }}
+            >
+              <span className="big">{formatDays(worst.days)}</span>
+              <span>
+                <strong>{drug.name}</strong>
+                <div className="small ink-2">
+                  {hospitals.length} hospital{hospitals.length > 1 ? "s" : ""} at risk · {siteName(worst.line.siteId)} runs out {runOutLabel(worst.days)}.
+                  {state.live && <ProblemNote drugId={drugId} siteId={worst.line.siteId} />}
+                </div>
+              </span>
+              <span className="row" style={{ flexWrap: "nowrap" }}>
+                <TierStatus tier={worst.tier} />
+                <span className="muted" aria-hidden>{isOpen ? "▴" : "▾"}</span>
+              </span>
+            </button>
+            {isOpen && (
+              <ul className="attention-sites">
+                {hospitals.map((c) => (
+                  <li key={c.line.siteId}>
+                    <button
+                      className={selected.drugId === drugId && selected.siteId === c.line.siteId ? "selected" : ""}
+                      onClick={() => pick({ drugId, siteId: c.line.siteId })}
+                    >
+                      <span className="num"><b>{formatDays(c.days)}</b> d</span>
+                      <span>
+                        {siteName(c.line.siteId)} · runs out {runOutLabel(c.days)} at {c.line.dailyUsage} {drug.unit} a day
+                        {c.changed && (
+                          <>
+                            {" "}· with the approved plan <Change was={`${formatDays(c.days)}`} now={`${formatDays(c.after)} days`} />
+                          </>
+                        )}
+                      </span>
+                      <TierStatus tier={c.tier} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

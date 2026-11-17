@@ -94,7 +94,7 @@ def test_saved_plan_records_options_and_check_numbers(engine, plan_id):
     [listed] = pending_plans(engine)
     assert listed["plan_id"] == plan_id and listed["status"] == "pending_approval"
     assert [(o["option"], o["type"], o["verified"]) for o in listed["options"]] == [
-        (1, "transfer", True), (2, "substitute", False), (3, "escalate", False)]
+        (1, "transfer", True), (2, "substitute", False), (3, "escalate", True)]   # substitute names no approved DIN
     assert listed["options"][0]["moves"] == ["B->A 180"]
 
 
@@ -123,12 +123,19 @@ def test_wrong_role_cannot_approve_a_transfer_and_nothing_is_written(engine, pla
     assert one(engine, "SELECT status FROM plan").status == "pending_approval"
 
 
-@pytest.mark.parametrize("option, message", [(2, "did not pass the checks"), (3, "did not pass the checks"),
-                                             (9, "has no option 9")])
+@pytest.mark.parametrize("option, message", [(2, "did not pass the checks"), (9, "has no option 9")])
 def test_only_checked_options_can_be_approved(engine, plan_id, option, message):
     with pytest.raises(ApprovalError, match=message):
         approve(engine, plan_id, role="pharmacist", option=option)
     assert count(engine, "decision") == 0
+
+
+def test_supply_manager_can_choose_the_escalation_instead(engine, plan_id):
+    result = approve(engine, plan_id, role="supply_manager", option=3, note="Calling Meridian myself")
+
+    assert result["approved"] is True and result["type"] == "escalate"
+    assert one(engine, "SELECT option_index, note FROM decision") == (3, "Calling Meridian myself")
+    assert one(engine, "SELECT status FROM supply_event").status == "mitigated"
 
 
 def test_a_plan_is_decided_once(engine, plan_id):

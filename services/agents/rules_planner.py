@@ -61,7 +61,7 @@ def rules_planner(*, event, stock_rows, data, delay_days, cover_days, risk_sites
                 type="substitute",
                 description=f"Consider approved substitute DIN {record['substitute_din']}",
                 moves=[],
-                reasoning=f"Approved substitution record: {record.get('note') or 'no note'}. Needs a pharmacist.",
+                reasoning=f"Rules planner: approved substitution record: {record.get('note') or 'no note'}. Needs a pharmacist.",
             ))
             break
 

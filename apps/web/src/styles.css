@@ -1,97 +1,107 @@
 /* ------------------------------------------------------------------
-   Tokens. Forest-green accent on soft sage neutrals in both themes.
-   Dark mode is a green-tinted charcoal, not black, with slightly dimmed
-   text so it is easy on the eyes.
+   Tokens. Microsoft Fluent / Power BI look: Segoe UI, neutral gray canvas,
+   white cards with a thin border, Microsoft blue for actions, 2px corners.
    Status colours are fixed and always paired with an icon + label.
 ------------------------------------------------------------------- */
 :root {
   color-scheme: light;
-  --page: #f3f6f3;
+  --page: #f3f2f1;
   --surface: #ffffff;
-  --surface-2: #e8efe9;
-  --ink: #14211a;
-  --ink-2: #3d4f44;
-  --muted: #64746a;
-  --line: rgba(20, 60, 35, 0.12);
-  --grid: #e0e8e2;
-  --axis: #b8c7bd;
-  --accent: #2f6b4f;
+  --surface-2: #faf9f8;
+  --ink: #252423;
+  --ink-2: #484644;
+  --muted: #605e5c;
+  --line: #e1dfdd;
+  --grid: #edebe9;
+  --axis: #c8c6c4;
+  --accent: #0078d4;
   --accent-ink: #ffffff;
-  --invert: #2f6b4f;
+  --invert: #0078d4;
   --invert-ink: #ffffff;
 
-  --good: #0ca30c;
-  --good-text: #006300;
-  --warn: #fab219;
-  --warn-text: #8a5a00;
-  --crit: #d03b3b;
-  --crit-text: #b02a2a;
-  --good-wash: rgba(12, 163, 12, 0.1);
-  --warn-wash: rgba(250, 178, 25, 0.16);
-  --crit-wash: rgba(208, 59, 59, 0.1);
+  --good: #107c10;
+  --good-text: #107c10;
+  --warn: #ffb900;
+  --warn-text: #8a6100;
+  --crit: #d13438;
+  --crit-text: #a4262c;
+  --good-wash: rgba(16, 124, 16, 0.08);
+  --warn-wash: rgba(255, 185, 0, 0.14);
+  --crit-wash: rgba(209, 52, 56, 0.08);
 
-  --series-1: #2f7d5a;
-  --series-2: #c0582a;
+  /* Power BI's default data colours */
+  --series-1: #118dff;
+  --series-2: #e66c37;
 
-  --radius: 14px;
-  --sans: Geist, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --shadow: 0 1.6px 3.6px rgba(0, 0, 0, 0.13), 0 0.3px 0.9px rgba(0, 0, 0, 0.11);
+  --radius: 4px;
+  --sans: "Segoe UI", "Segoe UI Web (West European)", "Open Sans", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: "Cascadia Mono", Consolas, ui-monospace, Menlo, monospace;
   font-family: var(--sans);
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.43;
   color: var(--ink);
   background: var(--page);
+  -webkit-font-smoothing: antialiased;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --page: #1a1e1b;
-    --surface: #232824;
-    --surface-2: #2b312c;
-    --ink: #dde5df;
-    --ink-2: #b3beb6;
-    --muted: #8e9a92;
-    --line: rgba(210, 230, 215, 0.1);
-    --grid: #2e3530;
-    --axis: #48524b;
-    --accent: #7fc4a0;
-    --accent-ink: #10261b;
-    --invert: #7fc4a0;
-    --invert-ink: #10261b;
-    --good-text: #3fc23f;
-    --warn-text: #fab219;
-    --crit-text: #ef6b6b;
-    --good-wash: rgba(12, 163, 12, 0.16);
-    --warn-wash: rgba(250, 178, 25, 0.14);
-    --crit-wash: rgba(208, 59, 59, 0.2);
-    --series-1: #4fa57c;
-    --series-2: #d9703f;
+    --page: #1b1a19;
+    --surface: #252423;
+    --surface-2: #2d2c2b;
+    --ink: #f3f2f1;
+    --ink-2: #c8c6c4;
+    --muted: #a19f9d;
+    --line: #3b3a39;
+    --grid: #323130;
+    --axis: #484644;
+    --accent: #4ba0f0;
+    --accent-ink: #0b1a2b;
+    --invert: #1f7bd0;
+    --invert-ink: #ffffff;
+    --good: #54b054;
+    --good-text: #6ccb5f;
+    --warn: #fce100;
+    --warn-text: #fce100;
+    --crit: #f1707b;
+    --crit-text: #f1707b;
+    --good-wash: rgba(84, 176, 84, 0.16);
+    --warn-wash: rgba(252, 225, 0, 0.12);
+    --crit-wash: rgba(241, 112, 123, 0.16);
+    --series-1: #4ba0f0;
+    --series-2: #f08a5d;
+    --shadow: 0 1.6px 3.6px rgba(0, 0, 0, 0.4), 0 0.3px 0.9px rgba(0, 0, 0, 0.3);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #1a1e1b;
-  --surface: #232824;
-  --surface-2: #2b312c;
-  --ink: #dde5df;
-  --ink-2: #b3beb6;
-  --muted: #8e9a92;
-  --line: rgba(210, 230, 215, 0.1);
-  --grid: #2e3530;
-  --axis: #48524b;
-  --accent: #7fc4a0;
-  --accent-ink: #10261b;
-  --invert: #7fc4a0;
-  --invert-ink: #10261b;
-  --good-text: #3fc23f;
-  --warn-text: #fab219;
-  --crit-text: #ef6b6b;
-  --good-wash: rgba(12, 163, 12, 0.16);
-  --warn-wash: rgba(250, 178, 25, 0.14);
-  --crit-wash: rgba(208, 59, 59, 0.2);
-  --series-1: #4fa57c;
-  --series-2: #d9703f;
+  --page: #1b1a19;
+  --surface: #252423;
+  --surface-2: #2d2c2b;
+  --ink: #f3f2f1;
+  --ink-2: #c8c6c4;
+  --muted: #a19f9d;
+  --line: #3b3a39;
+  --grid: #323130;
+  --axis: #484644;
+  --accent: #4ba0f0;
+  --accent-ink: #0b1a2b;
+  --invert: #1f7bd0;
+  --invert-ink: #ffffff;
+  --good: #54b054;
+  --good-text: #6ccb5f;
+  --warn: #fce100;
+  --warn-text: #fce100;
+  --crit: #f1707b;
+  --crit-text: #f1707b;
+  --good-wash: rgba(84, 176, 84, 0.16);
+  --warn-wash: rgba(252, 225, 0, 0.12);
+  --crit-wash: rgba(241, 112, 123, 0.16);
+  --series-1: #4ba0f0;
+  --series-2: #f08a5d;
+  --shadow: 0 1.6px 3.6px rgba(0, 0, 0, 0.4), 0 0.3px 0.9px rgba(0, 0, 0, 0.3);
 }
 
 * { box-sizing: border-box; }
@@ -522,3 +532,145 @@ details.why p { color: var(--ink-2); line-height: 1.65; }
 @media (max-width: 1100px) { .live-controls { grid-template-columns: 1fr; } .live-field .row { flex-wrap: wrap; } }
 .story .track li .link { display: flex; flex-direction: column; gap: 2px; width: 100%; color: inherit; }
 .story .track li .link:hover { text-decoration: none; }
+
+/* ==================================================================
+   Fluent / Power BI component styling. Overrides the shapes and type
+   above: square-ish corners, plain sentence-case labels, 32px controls,
+   cards with a light shadow, a blue bar on the active nav item.
+================================================================== */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 2px; }
+
+/* Type: no monospace or uppercase labels, Segoe weights */
+.label { font-family: var(--sans); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.meta { font-family: var(--sans); font-size: 12px; }
+.lead { font-size: 15px; }
+.page-head h1 { font-size: 24px; font-weight: 600; letter-spacing: 0; line-height: 1.33; }
+.section-head h2 { font-size: 16px; font-weight: 600; letter-spacing: 0; }
+.card-head h3, .plan-top h3 { font-size: 15px; font-weight: 600; letter-spacing: 0; }
+.story h2 { font-size: 16px; letter-spacing: 0; }
+.stat-value { font-size: 32px; font-weight: 600; letter-spacing: 0; }
+.attention-item .big { font-size: 22px; letter-spacing: 0; }
+.tag, .chip, .count, .rank, .tl-time, .meter-mark span, .axis-row .tick, .chart .axis { font-family: var(--sans); }
+.table th { font-family: var(--sans); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink-2); background: var(--surface-2); }
+.guide summary { font-family: var(--sans); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+details.sources summary::before, details.why summary::after { font-family: var(--sans); }
+
+/* Shell: light nav pane, blue bar on the active item */
+.sidebar { background: var(--surface-2); padding: 14px 8px; gap: 16px; }
+.brand { font-size: 15px; padding: 0 10px; }
+.brand-mark i { border-radius: 0; }
+.tabs button { border-radius: 2px; padding: 7px 10px; font-size: 14px; }
+.tabs button.active { background: var(--surface); box-shadow: var(--shadow); }
+.tabs button.active::before { left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 0; }
+.count { border-radius: 10px; font-size: 11px; font-weight: 600; }
+.who select, .icon-btn { border-radius: 2px; border-color: var(--axis); }
+.page { gap: 20px; padding-top: 20px; }
+
+/* Surfaces: white cards, thin border, light shadow */
+.card, .story, .stats, .plan, .explain, .attention-item, .modal, .tour-pop, .welcome-role, .welcome-how li {
+  border-radius: var(--radius);
+}
+.card, .story, .stats, .plan { box-shadow: var(--shadow); }
+.card-foot { border-radius: 0 0 var(--radius) var(--radius); }
+.plan.recommended { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent), var(--shadow); }
+.callout, .letter, .read-out > div, .flow-row .from, .flow-row .to, .bar-row, .tooltip, .tour-spot { border-radius: 2px; }
+.empty { border-radius: var(--radius); }
+.modal { border-radius: var(--radius); }
+
+/* Controls: Fluent 32px buttons and inputs */
+.btn { border-radius: 2px; border-color: var(--axis); padding: 0 16px; height: 32px; font-weight: 600; font-size: 14px; }
+.btn.primary:hover:not(:disabled) { opacity: 1; background: #106ebe; border-color: #106ebe; }
+:root[data-theme="dark"] .btn.primary:hover:not(:disabled) { background: #2b88d8; border-color: #2b88d8; }
+.btn:disabled { opacity: 0.45; }
+.input { border-radius: 2px; border-color: var(--axis); padding: 5px 8px; min-height: 32px; }
+.input:focus { outline: none; border-color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.link { color: var(--accent); font-weight: 400; }
+.link:hover { color: var(--accent); }
+.badge-accent { border-radius: 2px; font-weight: 600; }
+.tag, .chip { border-radius: 2px; }
+.filters button { border-radius: 2px; }
+.tour-btn { border-radius: 2px; }
+
+/* Status: small square-ish icons like Power BI KPI indicators */
+.status .ico { border-radius: 50%; }
+.bar-fill, .gk-bar-good, .gk-bar-warn, .gk-bar-crit, .bar-gain, .gk-cost { border-radius: 0; }
+.meter, .meter-fill { border-radius: 0; }
+
+/* Day track */
+.track { background: var(--surface-2); }
+.track li.current::before { background: var(--accent); }
+/* One row for however many days the scenario has */
+.track { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(72px, 1fr); }
+
+/* ==================================================================
+   Coloured sidebar. Blue with white text (Microsoft / Databricks style).
+   For Power BI amber instead, swap the --nav-* values for the amber set
+   below: amber needs dark text, white on yellow is unreadable.
+     --nav-bg: #f2c811; --nav-ink: #252423; --nav-ink-2: rgba(37,36,35,0.78);
+     --nav-hover: rgba(0,0,0,0.08); --nav-active: rgba(0,0,0,0.14);
+     --nav-line: rgba(0,0,0,0.16); --nav-bar: #252423;
+================================================================== */
+:root {
+  --nav-bg: #004e8c;
+  --nav-ink: #ffffff;
+  --nav-ink-2: rgba(255, 255, 255, 0.82);
+  --nav-hover: rgba(255, 255, 255, 0.1);
+  --nav-active: rgba(255, 255, 255, 0.18);
+  --nav-line: rgba(255, 255, 255, 0.2);
+  --nav-bar: #ffffff;
+}
+.sidebar { background: var(--nav-bg); color: var(--nav-ink); border-right-color: transparent; }
+.sidebar .brand { color: var(--nav-ink); }
+.sidebar .brand-mark i { background: var(--nav-ink) !important; }
+.sidebar .tabs button { color: var(--nav-ink-2); }
+.sidebar .tabs button:hover { color: var(--nav-ink); background: var(--nav-hover); }
+.sidebar .tabs button.active { color: var(--nav-ink); background: var(--nav-active); box-shadow: none; }
+.sidebar .tabs button.active::before { background: var(--nav-bar); }
+.sidebar .count { background: var(--nav-ink); color: var(--nav-bg); }
+.sidebar .label { color: var(--nav-ink-2); }
+.sidebar .who { border-top-color: var(--nav-line); }
+.sidebar .who select, .sidebar .icon-btn { background-color: var(--nav-hover); border-color: var(--nav-line); color: var(--nav-ink); }
+.sidebar .who select { background-image: linear-gradient(45deg, transparent 50%, var(--nav-ink) 50%), linear-gradient(135deg, var(--nav-ink) 50%, transparent 50%); }
+.sidebar .who select option { color: #252423; background: #ffffff; }
+.sidebar .tour-btn { border-color: var(--nav-line); color: var(--nav-ink-2); }
+.sidebar .tour-btn:hover { border-color: var(--nav-ink); color: var(--nav-ink); }
+.sidebar .tour-btn .q { background: var(--nav-ink); color: var(--nav-bg); }
+.sidebar :focus-visible { outline-color: var(--nav-bar); }
+
+/* ---------- Home dashboard tiles (Power BI style: number, label, short list) ---------- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.tile { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 14px 16px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); min-width: 0; }
+.tile:hover { border-color: var(--accent); }
+.tile-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.tile-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+.tile-open { font-size: 12px; color: var(--accent); white-space: nowrap; }
+.tile-value { display: flex; align-items: center; gap: 10px; font-size: 32px; font-weight: 600; line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.tile-body { display: block; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.tile-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.tile-rows li { display: flex; justify-content: space-between; gap: 12px; min-width: 0; }
+.tile-rows li > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-right { color: var(--ink-2); white-space: nowrap; flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Compact simulated clock on every page but Home ---------- */
+.day-control { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+
+/* ---------- Report-page tabs (Stock: Needs attention / All stock) ---------- */
+.view-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.view-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 8px 14px; font-size: 14px; color: var(--ink-2); display: inline-flex; gap: 8px; align-items: baseline; }
+.view-tabs button:hover { color: var(--ink); background: var(--surface-2); }
+.view-tabs button.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+.view-tabs .num { font-size: 12px; font-weight: 400; }
+
+/* ---------- Needs attention: one row per drug, hospitals on demand ---------- */
+.attention-drug { display: flex; flex-direction: column; }
+.attention-drug.open .attention-item { border-color: var(--accent); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.attention-sites { list-style: none; margin: 0; padding: 0; border: 1px solid var(--accent); border-top: 0; border-radius: 0 0 var(--radius) var(--radius); background: var(--surface-2); }
+.attention-sites li + li { border-top: 1px solid var(--line); }
+.attention-sites button { width: 100%; display: grid; grid-template-columns: 56px 1fr auto; gap: 12px; align-items: center; padding: 8px 16px; background: none; border: 0; text-align: left; font-size: 13px; }
+.attention-sites button:hover, .attention-sites button.selected { background: var(--surface); }
+.attention-sites button.selected { box-shadow: inset 3px 0 0 var(--accent); }
+@media (max-width: 760px) {
+  .tiles { grid-template-columns: 1fr; }
+  .attention-sites button { grid-template-columns: 48px 1fr; }
+  .attention-sites button > :last-child { display: none; }
+}
