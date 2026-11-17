@@ -1,5 +1,0 @@
-request_id,plan_id,din,from_site,to_site,units,approval_status,approver_role,deadline
-T-101,P-2026-11-15-01,99000001,B,A,150,approved,pharmacy_manager,2026-11-16T12:00:00
-T-102,P-2026-11-15-02,99000003,B,A,30,approved,pharmacy_manager,2026-11-16T12:00:00
-T-103,P-2026-11-15-03,99000008,C,A,20,approved,pharmacy_manager,2026-11-17T12:00:00
-T-104,P-2026-11-15-04,99000005,B,C,10,approved,pharmacy_manager,2026-11-17T12:00:00
