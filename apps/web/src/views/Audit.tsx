@@ -25,12 +25,12 @@ function who(e: AuditEntry) {
   return `System (${e.actorName.replace("-", " ")})`;
 }
 
-/** Icon and colour class for the circle beside each timeline entry. */
-function actorMark(e: AuditEntry): { icon: IconName; cls: string } {
-  if (isHuman(e.actor)) return { icon: "user", cls: "human" };
-  if (e.actor === "agent") return { icon: "sparkle", cls: "agent" };
-  if (e.actor === "solver") return { icon: "route", cls: "solver" };
-  return { icon: "cog", cls: "system" };
+/** Text in the circle beside each timeline entry (original cue): initials for people, AI, P(lanner), S(ystem). */
+function dot(e: AuditEntry) {
+  if (isHuman(e.actor)) return e.actorName.split(" ").map((p) => p[0]).join("");
+  if (e.actor === "agent") return "AI";
+  if (e.actor === "solver") return "P";
+  return "S";
 }
 
 /* The four kinds of actor, in the order work flows through the platform.
@@ -131,8 +131,8 @@ export function Audit() {
                 </div>
                 {g.items.map((e) => (
                   <div key={e.id} className="tl-item">
-                    <span className={`who-dot ${actorMark(e).cls}`} aria-hidden>
-                      <Icon name={actorMark(e).icon} size={14} />
+                    <span className={`who-dot ${isHuman(e.actor) ? "human" : e.actor === "agent" ? "agent" : ""}`} aria-hidden>
+                      {dot(e)}
                     </span>
                     <div className="tl-body">
                       <div className="what">
