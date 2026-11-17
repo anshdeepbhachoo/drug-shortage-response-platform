@@ -5,6 +5,3 @@ data/*
 !data/.gitkeep
 .venv/
 __pycache__/
-evaluation/
-node_modules/
-dist/

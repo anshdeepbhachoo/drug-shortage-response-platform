@@ -1,2 +1,0 @@
-# Keep shell scripts LF so Docker init scripts run on Windows checkouts.
-*.sh text eol=lf
