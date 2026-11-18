@@ -26,7 +26,7 @@ const NAV: { id: ViewId; label: string; roles: Role[] }[] = [
   { id: "board", label: "Stock", roles: ["supply", "pharmacist", "procurement", "auditor"] },
   { id: "events", label: "Alerts", roles: ["supply", "pharmacist", "auditor"] },
   { id: "plans", label: "Plans", roles: ["supply", "pharmacist", "procurement", "auditor"] },
-  { id: "approvals", label: "Approvals", roles: ["supply", "pharmacist"] },
+  { id: "approvals", label: "Approvals", roles: ["supply", "pharmacist", "procurement"] },
   { id: "drafts", label: "Messages", roles: ["supply", "procurement"] },
   { id: "audit", label: "History", roles: ["supply", "pharmacist", "procurement", "auditor"] },
   { id: "data", label: "Data", roles: ["supply", "auditor"] },

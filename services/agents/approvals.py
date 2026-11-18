@@ -9,7 +9,10 @@ rules are enforced here in code (and the database), never by a model:
 - approving marks the plan's supply event as mitigated (it has a response);
 - a transfer is re-checked against *current* stock first. If a donor would now
   fall below its minimum (e.g. its usage went up since the plan was made), the
-  plan is marked broken and the approval is refused.
+  plan is marked broken and the approval is refused;
+- an order is re-checked too: each hospital must still have stock on the day its
+  order is expected. Approving it records one purchase_order per line with status
+  'approved' (authorised, not placed: a person places it with the supplier).
 
 The decision, plan status and an audit entry are written in one transaction.
 Approving executes nothing: it records that a person authorised the option.
@@ -25,7 +28,7 @@ import argparse
 import json
 import sys
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
 from sqlalchemy import text
@@ -59,7 +62,8 @@ class ApprovalError(Exception):
 
 def _options(conn: Connection, plan_id: str) -> dict[int, list[dict]]:
     rows = conn.execute(text("""
-        SELECT action_id, option_index, type, description, from_site, to_site, units, verified, problems
+        SELECT action_id, option_index, type, description, from_site, to_site, units, supplier_id, expected_date,
+               verified, problems
         FROM plan_action WHERE plan_id = :plan_id
         ORDER BY option_index, action_id
     """), {"plan_id": plan_id}).all()
@@ -126,13 +130,67 @@ def recheck_transfer(data, din: str, actions: list[dict], detail: dict | None) -
                           reserve_days=detail.get("cover_days") or {})
 
 
+def recheck_order(data, din: str, actions: list[dict], today: date) -> list[str]:
+    """Each hospital must still have stock on the day its order is expected, from a supplier that still
+    supplies the drug. (Quantities were checked when the plan was made; a person may still adjust them.)"""
+
+    stock = {row["site_id"]: row for row in data.stock(din)}
+    known = {s["supplier_id"] for s in data.suppliers(din)} if hasattr(data, "suppliers") else set()
+    problems = []
+    for action in actions:
+        site_id, row = action["to_site"], stock.get(action["to_site"])
+        if row is None:
+            problems.append(f"No stock record for {site_id}.")
+            continue
+        if action["supplier_id"] not in known:
+            problems.append(f"{action['supplier_id']} no longer supplies this drug.")
+        expected = action["expected_date"]
+        expected = date.fromisoformat(expected) if isinstance(expected, str) else expected
+        arrives_in = (expected - today).days
+        if row["daily_use"] > 0 and row["on_hand"] / row["daily_use"] < arrives_in:
+            problems.append(f"{site_id} now runs out in {row['on_hand'] / row['daily_use']:.1f} days, "
+                            f"before its order arrives in {arrives_in}.")
+    return problems
+
+
+def shift_order_dates(actions: list[dict], planned_on: date, today: date) -> list[dict]:
+    """The lead time starts when a person approves, not when the plan was made: a plan that waited two days
+    for approval arrives two days later."""
+
+    waited = max(0, (today - planned_on).days)
+    shifted = []
+    for action in actions:
+        expected = action["expected_date"]
+        expected = date.fromisoformat(expected) if isinstance(expected, str) else expected
+        shifted.append({**action, "expected_date": expected + timedelta(days=waited)})
+    return shifted
+
+
+def _record_orders(conn: Connection, plan, actions: list[dict]) -> list[str]:
+    """One approved purchase order per order line. Approved means authorised: nothing is sent."""
+
+    ids = []
+    for action in actions:
+        order_id = f"PO-{action['action_id']}"
+        conn.execute(text("""
+            INSERT INTO purchase_order (order_id, din, site_id, supplier_id, qty, status, expected_date,
+                                        event_id, plan_id, source_ref)
+            VALUES (:order_id, :din, :site_id, :supplier_id, :qty, 'approved', :expected_date,
+                    :event_id, :plan_id, :source_ref)
+        """), {"order_id": order_id, "din": plan.din, "site_id": action["to_site"], "supplier_id": action["supplier_id"],
+               "qty": action["units"], "expected_date": action["expected_date"], "event_id": plan.event_id,
+               "plan_id": plan.plan_id, "source_ref": f"plan:{action['action_id']}"})
+        ids.append(order_id)
+    return ids
+
+
 # ---------------------------------------------------------
 # Decisions
 # ---------------------------------------------------------
 
 def _lock_plan(conn: Connection, plan_id: str):
     plan = conn.execute(text("""
-        SELECT p.plan_id, p.status, p.detail, e.event_id, e.din
+        SELECT p.plan_id, p.status, p.detail, p.created_at, e.event_id, e.din
         FROM plan p JOIN supply_event e USING (event_id)
         WHERE p.plan_id = :plan_id
         FOR UPDATE OF p
@@ -199,8 +257,15 @@ def approve_plan(
 
         refs = [plan_id, plan.event_id] + [a["action_id"] for a in actions]
 
-        if kind == "transfer":
-            problems = recheck_transfer(data, plan.din, actions, plan.detail)
+        if kind in ("transfer", "order"):
+            if kind == "transfer":
+                problems = recheck_transfer(data, plan.din, actions, plan.detail)
+            else:
+                today = getattr(data, "as_of", None) or (at.date() if at else date.today())
+                planned_on = (plan.detail or {}).get("planned_on")
+                planned_on = date.fromisoformat(planned_on) if planned_on else plan.created_at.date()
+                actions = shift_order_dates(actions, planned_on, today)
+                problems = recheck_order(data, plan.din, actions, today)
             if problems:
                 conn.execute(text("UPDATE plan SET status = 'broken' WHERE plan_id = :p"), {"p": plan_id})
                 audit_id = _audit(conn, "approvals", "rule", "Approval refused: plan no longer safe", plan_id,
@@ -213,16 +278,20 @@ def approve_plan(
             VALUES (:plan_id, :actor, :role, 'approved', :note, :option, COALESCE(:at, now()))
         """), {"plan_id": plan_id, "actor": by, "role": role, "note": note, "option": option, "at": at})
         conn.execute(text("UPDATE plan SET status = 'approved' WHERE plan_id = :p"), {"p": plan_id})
+        order_ids = _record_orders(conn, plan, actions) if kind == "order" else []
         # The alert now has an approved response; follow-up tracks it from here.
         conn.execute(text("UPDATE supply_event SET status = 'mitigated' WHERE event_id = :e AND status = 'open'"),
                      {"e": plan.event_id})
         audit_id = _audit(conn, by, "human", "Approved", plan_id,
                           {"role": role, "option": option, "type": kind, "note": note,
-                           "actions": [{k: a[k] for k in ("action_id", "from_site", "to_site", "units")} for a in actions]},
-                          refs, at)
+                           "actions": [{k: a[k] for k in ("action_id", "from_site", "to_site", "units", "supplier_id",
+                                                          "expected_date")} for a in actions],
+                           **({"purchase_orders": order_ids} if order_ids else {})},
+                          refs + order_ids, at)
 
     return {"approved": True, "plan_id": plan_id, "status": "approved", "option": option,
-            "type": kind, "action_ids": [a["action_id"] for a in actions], "audit_id": audit_id}
+            "type": kind, "action_ids": [a["action_id"] for a in actions], "audit_id": audit_id,
+            **({"purchase_orders": order_ids} if order_ids else {})}
 
 
 def reject_plan(engine: Engine, plan_id: str, by: str, role: str, note: str, at: "datetime | None" = None) -> dict:
