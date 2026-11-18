@@ -227,13 +227,24 @@ def fallback_decision(facts: dict, allowed: set[str]) -> tuple[str, str]:
     return "escalate", "Reminders have run out or the margin is tight; a person must decide."
 
 
+# Who acts on an order problem. The approver handed the order to procurement, who own the supplier: placing it,
+# answering the supplier, a reply that needs reading. A problem with the stock itself (the hospital runs out
+# before the order arrives, the supplier can't send it all) needs a new plan: that is the supply manager's.
+SUPPLY_PROBLEMS = {"partial", "backordered", "cancelled"}
+
+
+def escalation_role(facts: dict) -> str:
+    stock = facts.get("supplier_reply") in SUPPLY_PROBLEMS or facts["margin_days"] < 0 or facts["cancelled"]
+    return "supply_manager" if stock else "procurement"
+
+
 def recipient_for(decision: str, order: WatchedOrder, facts: dict) -> str | None:
     """Code, not the model, decides who a message goes to."""
 
     if decision == "nudge":
-        return order.supplier if facts["placed"] else order.approver_role
+        return order.supplier if facts["placed"] else "procurement"   # procurement places orders, whoever approved
     if decision == "escalate":
-        return "supply_manager"
+        return escalation_role(facts)
     return None
 
 

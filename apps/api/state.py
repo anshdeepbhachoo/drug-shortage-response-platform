@@ -373,21 +373,49 @@ def _actor(row: dict) -> tuple[str, str]:
     if row["actor_type"] == "agent":
         return "agent", row["actor"]
     if row["actor_type"] == "rule":
+        # The order orchestrator logs its steps as a rule row; when its agent made the call, say so.
+        if "agent" in (detail.get("chosen_by"), detail.get("decided_by")):
+            return "agent", row["actor"]
         return "solver", row["actor"]
     return "system", row["actor"]
+
+
+ORDER_STEPS = ("Order placed via", "Order email ready", "Order rejected by", "Order not submitted", "Order orchestration")
+
+
+def _supplier(supplier_id: str | None) -> str:
+    return " ".join(w.capitalize() for w in (supplier_id or "a supplier").split("-"))
 
 
 def _detail_text(row: dict, site_names: dict[str, str]) -> str:
     detail = row["detail"] or {}
     action = row["action"]
     if action in ("Approved", "Rejected"):
-        what = f"Option {detail['option']} ({detail.get('type', 'plan')})" if detail.get("option") else "Plan"
+        what = f"Option {detail['option']} ({detail.get('type', 'plan').replace('_', ' + ')})" if detail.get("option") else "Plan"
         moves = [a for a in detail.get("actions", []) if a.get("units")]
         if moves:
             name = lambda site: site_names.get(site, site)
-            what += ": " + ", ".join(f"{a['units']} units from {name(a['from_site'])} to {name(a['to_site'])}" for a in moves)
+            what += ": " + ", ".join(
+                f"transfer {a['units']} from {name(a['from_site'])} to {name(a['to_site'])}" if a.get("from_site")
+                else f"order {a['units']} from {_supplier(a.get('supplier_id'))} for {name(a['to_site'])}" for a in moves)
         note = detail.get("note")
         return what + (f'. Note: "{note}"' if note else "")
+    if action.startswith(ORDER_STEPS):
+        text_ = detail.get("summary") or detail.get("note") or ""
+        ref = detail.get("external_ref")
+        if ref and ref not in text_:
+            text_ += f" Reference {ref}."
+        if detail.get("mode") == "simulate" and not action.startswith("Order orchestration"):
+            text_ += " (Simulated: built and checked, nothing was sent.)"
+        return text_.strip()
+    if action == "Order escalated to procurement" or action.startswith("Escalated to"):
+        return detail.get("message", "")
+    if action == "Order request drafted":
+        return f"Message to {detail.get('message_to', 'the supplier')}: \"{detail.get('subject', '')}\". Waiting for a person to send it."
+    if action == "Order held for release":
+        return detail.get("note") or f"{detail.get('qty')} units is over the auto-submit limit; a person must release it."
+    if action == "Notification read":
+        return "Marked a notification as read."
     if action.startswith("Signal pipeline"):
         reason = detail.get("reason")
         return "; ".join(reason) if isinstance(reason, list) else (reason or "")
@@ -402,6 +430,9 @@ def _detail_text(row: dict, site_names: dict[str, str]) -> str:
         return f"Day {detail.get('day')}: " + ", ".join(parts)
     if "problems" in detail:
         return "; ".join(detail["problems"])
+    for key in ("summary", "reason", "message", "note"):    # anything else the agents log: their own words
+        if isinstance(detail.get(key), str) and detail[key]:
+            return detail[key]
     return ""
 
 
@@ -531,8 +562,55 @@ def followups(conn, names: dict[str, str], site_names: dict[str, str]) -> list[d
             # "agent" when the model chose; "rule" or "fallback" when code did.
             "decidedBy": detail.get("decided_by"),
             "reason": detail.get("reason", ""),
+            "messageTo": detail.get("message_to"), "messageDraft": detail.get("message_draft"),
         })
     return result + order_followups(conn, names, site_names)
+
+
+# Backend role -> UI role (who sees the notification).
+ROLE_UI = {"supply_manager": "supply", "procurement": "procurement", "pharmacist": "pharmacist"}
+AGENT_TITLE = {"escalate": "Escalated to you", "nudge": "Reminder: not placed yet"}
+SUBMIT_TITLE = {"ready_to_send": "Order email ready to send", "escalated": "Order needs placing by hand",
+                "held": "Order waiting for your release"}
+
+
+def notifications(conn, items: list[dict]) -> list[dict]:
+    """What needs a person, addressed to the role that acts on it, newest first.
+
+    From the agents: the order and follow-up agents' latest escalation or reminder (code chose the recipient),
+    and orders the orchestrator agent handed to procurement (an email to send, a hold, an escalation).
+    From people: escalations (services/agents/escalations.py). A notification stays until someone in that role
+    marks it read, or (for an order waiting on procurement) until the order is placed."""
+
+    read = {(r["detail"] or {}).get("id") for r in _rows(conn, "SELECT detail FROM audit_log WHERE action = 'Notification read'")}
+    by_id = {f["id"]: f for f in items}
+    out = []
+
+    def add(nid, role, origin, title, body, item, at):
+        if role not in ROLE_UI:
+            return
+        out.append({"id": nid, "toRole": ROLE_UI[role], "from": origin, "title": title, "body": body,
+                    "objectId": item["id"], "kind": item["kind"], "drugId": item["drugId"],
+                    "about": f"{item['drug']}: {item['units']} units, {item['from']} → {item['to']}",
+                    "at": at, "read": nid in read})
+
+    for f in items:
+        if f.get("decision") in AGENT_TITLE and f.get("messageTo") in ROLE_UI and f.get("orderStatus") not in ("delivered", "cancelled"):
+            origin = "Order agent" if f["kind"] == "order" else "Follow-up agent"
+            add(f"{f['id']}:{f['decision']}:{f.get('checkedAt')}", f["messageTo"], origin, AGENT_TITLE[f["decision"]],
+                f.get("messageDraft") or f.get("reason") or "", f, f.get("checkedAt"))
+        last = (f.get("submissions") or [None])[-1]
+        if last and last["status"] in SUBMIT_TITLE and f.get("orderStatus") == "approved":
+            add(f"{f['id']}:submission:{last['at']}", "procurement", "Order orchestrator", SUBMIT_TITLE[last["status"]],
+                last.get("reason") or last.get("note") or "", f, last["at"])
+    for r in _rows(conn, """SELECT audit_id, actor, object, detail, at FROM audit_log
+                            WHERE actor_type = 'human' AND action LIKE 'Escalated to %' ORDER BY audit_id"""):
+        item = by_id.get(r["object"])
+        if item:
+            d = r["detail"] or {}
+            add(f"{r['object']}:escalation:{r['audit_id']}", d.get("to_role"), r["actor"], "Escalated to you",
+                d.get("message", ""), item, r["at"].isoformat())
+    return sorted(out, key=lambda n: n["at"] or "", reverse=True)
 
 
 ORDER_STATUS_WORD = {"approved": "Approved, not placed yet", "placed": "Placed with the supplier", "in_transit": "In transit",
@@ -613,7 +691,10 @@ def build_state(engine: Engine, as_of: date | None = None) -> dict:
         stock = stock_lines(conn, data, as_of, drugs, platform)
         raw_plans = _plans_raw(conn)
         events = supply_events(conn, start, raw_plans, names)
+        tracked = followups(conn, names, {site["id"]: site["name"] for site in sites})
         state = {
+            "followups": tracked,
+            "notifications": notifications(conn, tracked),
             "asOf": as_of.isoformat(),
             "days": [d.isoformat() for d in days],
             # Days whose data has arrived; before that the stock shown is the latest earlier day (or none).
@@ -632,7 +713,6 @@ def build_state(engine: Engine, as_of: date | None = None) -> dict:
             "dayReports": {r["object"]: r["detail"] for r in _rows(conn, """
                 SELECT DISTINCT ON (object) object, detail FROM audit_log
                 WHERE action = 'Daily run' ORDER BY object, audit_id DESC""")},
-            "followups": followups(conn, names, {site["id"]: site["name"] for site in sites}),
             "inbox": _inbox_for(as_of),
             "sources": sources(conn, events, raw_plans, stock),
         }

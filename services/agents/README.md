@@ -81,6 +81,17 @@ Each reply is screened by `security.py`, read by the reader agent (or its script
 
 Data: `mock/orders/order_replies.json`. Replies are timed from the order's approval and filled in from the order. `ORDER_REPLY_STORY` picks the story (`mixed` by default, `supply_problems`, or `none`). Tests: `tests/test_orders.py`, `tests/test_order_agent.py`, `tests/test_order_replies.py`.
 
+**Escalations and notifications** (`escalations.py`).
+
+- **Code decides who receives an escalation:** whoever can act on it.
+  - After approval an order belongs to procurement. So the person who approved it (the supply manager for a combined option) escalates order problems to procurement, and procurement escalates back to the supply manager when the gap needs a new plan.
+  - The order agent follows the same rule: placing it and supplier questions go to procurement; running out first, a partial delivery or a cancellation goes to the supply manager.
+- **Each role sees its notifications in "For you" on the Overview.** These include:
+  - the agents' escalations and reminders
+  - orders the orchestrator handed to procurement
+  - people's escalations
+- **A notification clears when someone in that role marks it read.** An order waiting on procurement clears once it is placed. Everything is in `audit_log`.
+
 ### Placing orders: the order orchestrator agent (`ordering/`)
 
 ```

@@ -15,6 +15,23 @@ export interface LiveState extends LiveCatalog {
   loadedDays: string[];
   dayReports?: Record<string, DaySummary>;
   followups?: FollowUp[];
+  notifications?: Notification[];
+}
+
+/** Something that needs a person, addressed to the role that acts on it (code chose the role). */
+export interface Notification {
+  id: string;
+  toRole: Role;
+  /** Who raised it: "Order agent", "Follow-up agent", "Order orchestrator", or the person's name. */
+  from: string;
+  title: string;
+  body: string;
+  objectId: string;
+  kind: "order" | "transfer";
+  drugId: string;
+  about: string;
+  at: string | null;
+  read: boolean;
 }
 
 /** One approved transfer and the follow-up agent's latest check on it. */
@@ -146,6 +163,10 @@ export const api = {
       `/orders/${encodeURIComponent(orderId)}/release`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+  escalate: (objectId: string, body: { by: string; role: Role; message: string; as_of?: string }) =>
+    call<{ to_role: string }>(`/escalations/${encodeURIComponent(objectId)}`, { method: "POST", body: JSON.stringify(body) }),
+  readNotification: (id: string, body: { by: string; role: Role; as_of?: string }) =>
+    call<{ read: string }>(`/notifications/${encodeURIComponent(id)}/read`, { method: "POST", body: JSON.stringify(body) }),
   runFollowup: (now: string, asOf?: string) =>
     call<{ request_id: string; decision: string; reason: string }[]>("/followup/run", {
       method: "POST",

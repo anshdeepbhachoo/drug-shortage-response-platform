@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { LiveBar, latestReport } from "../components/LiveBar";
 import { PageHead, Status, formatDays, type Tone } from "../components/ui";
-import { drugById, siteName } from "../data/mock";
+import { USERS, drugById, siteName } from "../data/mock";
 import { lineCoverage, tierFor } from "../lib/risk";
 import { useStore } from "../lib/store";
 
@@ -13,6 +13,7 @@ export function Home({ go }: { go: Go }) {
     <>
       <PageHead label="Overview" title="Network Overview" />
       <LiveBar />
+      <ForYou go={go} />
       <div className="tiles">
         <HospitalsTile go={go} />
         <StockTile go={go} />
@@ -22,6 +23,51 @@ export function Home({ go }: { go: Go }) {
         <InboxTile go={go} />
       </div>
     </>
+  );
+}
+
+const WHEN = (at: string | null) =>
+  at ? new Date(at).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+
+/** Notifications for the signed-in role: escalations and hand-offs from the agents and from people, addressed by
+ * code to the role that acts on them. Switch user to see another role's. */
+function ForYou({ go }: { go: Go }) {
+  const { state, live } = useStore();
+  const all = (state.live?.notifications ?? []).filter((n) => n.toRole === state.role);
+  const unread = all.filter((n) => !n.read);
+  if (!state.live || state.role === "auditor") return null;
+  return (
+    <section className="card card-pad for-you">
+      <div className="row-between">
+        <strong>
+          For you, {USERS[state.role].name}
+          {unread.length ? ` · ${unread.length} new` : ""}
+        </strong>
+        <Status tone={unread.length ? "warn" : "good"}>{unread.length ? "Needs you" : "Nothing new"}</Status>
+      </div>
+      {unread.length === 0 ? (
+        <span className="small muted">Escalations and orders waiting on your role show up here.</span>
+      ) : (
+        <ul className="for-you-list">
+          {unread.slice(0, 6).map((n) => (
+            <li key={n.id}>
+              <div className="for-you-text">
+                <div className="row">
+                  <Status tone={n.title.startsWith("Escalated") || n.title.includes("by hand") ? "crit" : "warn"}>{n.title}</Status>
+                  <b>{n.about}</b>
+                </div>
+                {n.body && <p className="small ink-2">{n.body}</p>}
+                <span className="small muted">From {n.from} · {WHEN(n.at)} · {n.objectId}</span>
+              </div>
+              <div className="for-you-actions">
+                <button className="btn" onClick={() => go("alerts")}>Open</button>
+                <button className="btn" disabled={live.busy !== null} onClick={() => void live.readNotification(n.id)}>Mark read</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

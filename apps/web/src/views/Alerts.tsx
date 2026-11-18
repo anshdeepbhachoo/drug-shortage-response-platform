@@ -298,11 +298,17 @@ function Submissions({ order: o }: { order: FollowUp }) {
   const summary = o.orchestration;
   return (
     <div className="stack" style={{ gap: 4 }}>
+      <details>
+        <summary className="small">
+          How it was placed: {attempts.length} step{attempts.length > 1 ? "s" : ""}
+          {summary ? (summary.decided_by === "agent" ? ", by the orchestrator agent" : ", by the orchestrator rules") : ""}
+        </summary>
+      <div className="stack" style={{ gap: 4, paddingLeft: 8, marginTop: 4 }}>
       {summary && (
         <span className="small">
           <Origin by={summary.decided_by === "agent" ? "agent" : "rules"}
             label={summary.decided_by === "agent" ? "Order orchestrator agent" : "Order orchestrator rules"} compact />{" "}
-          <strong>Orchestrator:</strong> {summary.summary}
+          {summary.summary}
         </span>
       )}
       {attempts.map((a, i) => (
@@ -321,7 +327,7 @@ function Submissions({ order: o }: { order: FollowUp }) {
               <span className="small">
                 <Origin by={a.report.read_by === "agent" ? "agent" : "rules"}
                   label={a.report.read_by === "agent" ? (SUB_AGENT[a.channel] ?? "Sub-agent") : "Sub-agent rules"} compact />{" "}
-                Read as <strong>{OUTCOME_WORD[a.report.outcome] ?? a.report.outcome}</strong>: {a.report.summary}
+                Read as <b>{OUTCOME_WORD[a.report.outcome] ?? a.report.outcome}</b>: {a.report.summary}
               </span>
             )}
             {a.report?.steps?.length ? (
@@ -346,12 +352,63 @@ function Submissions({ order: o }: { order: FollowUp }) {
           </div>
         </details>
       ))}
+      </div>
+      </details>
       {canRelease && (
         <div className="row" style={{ gap: 8 }}>
           <button className="btn" onClick={() => void live.releaseOrder(o.id)}>Release to supplier</button>
           <span className="small muted">Above the auto-submit limit: a person releases it.</span>
         </div>
       )}
+    </div>
+  );
+}
+
+/** One line that says where the order stands with the supplier: placed (where, reference, when), waiting on
+ * procurement, or escalated. The detail is one click away. */
+function placedLine(o: FollowUp): { tone: Tone; label: string; text: string } | null {
+  const attempts = o.submissions ?? [];
+  const when = (at: string) => new Date(at).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+  const placed = attempts.find((a) => a.status === "accepted");
+  if (placed) return { tone: "good", label: "Placed", text: `via ${placed.target}${placed.externalRef ? ` · ref ${placed.externalRef}` : ""} · ${when(placed.at)}` };
+  if (o.orderStatus && o.orderStatus !== "approved") return { tone: "good", label: "Placed", text: `${o.orderStatusText ?? o.orderStatus}, recorded by procurement` };
+  const last = attempts[attempts.length - 1];
+  if (!last) return null;
+  const why = attempts.find((a) => a.report?.outcome === "needs_person")?.report?.summary;
+  if (last.status === "ready_to_send") return { tone: "warn", label: "Waiting on procurement", text: `to send the email to ${o.from}${why ? `. ${why}` : ""}` };
+  if (last.status === "escalated") return { tone: "crit", label: "Escalated to procurement", text: `to place by hand: ${last.note ?? ""}` };
+  if (last.status === "held") return { tone: "warn", label: "Held", text: "for procurement to release (above the auto-submit limit)" };
+  return null;
+}
+
+/** Who a person escalates an order to: whoever acts next. Code on the server decides; this only labels the button. */
+const ESCALATE_ORDER_TO: Partial<Record<string, string>> = {
+  supply: "procurement", pharmacist: "procurement", procurement: "the supply manager",
+};
+
+function EscalateButton({ objectId, to }: { objectId: string; to: string }) {
+  const { live } = useStore();
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  if (!open) {
+    return (
+      <div className="row">
+        <button className="btn" disabled={live.busy !== null} onClick={() => setOpen(true)}>Escalate to {to}</button>
+      </div>
+    );
+  }
+  return (
+    <div className="escalate-box">
+      <label className="small" htmlFor={`esc-${objectId}`}>Escalate to {to}</label>
+      <textarea id={`esc-${objectId}`} rows={3} value={message} placeholder={`What does ${to} need to do?`}
+        onChange={(e) => setMessage(e.target.value)} autoFocus />
+      <div className="row">
+        <button className="btn primary" disabled={!message.trim() || live.busy !== null}
+          onClick={() => void live.escalate(objectId, message).then(() => { setOpen(false); setMessage(""); })}>
+          Send to {to}
+        </button>
+        <button className="btn ghost" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
     </div>
   );
 }
@@ -364,6 +421,8 @@ function OrderTracking({ order: o }: { order: FollowUp }) {
   const { state, live } = useStore();
   const canRecord = (state.role === "procurement" || state.role === "supply") && live.busy === null;
   const expected = o.expectedBy ? new Date(o.expectedBy).toLocaleDateString("en-CA", { month: "short", day: "numeric" }) : "–";
+  const headline = placedLine(o);
+  const escalateTo = o.orderStatus !== "delivered" && o.orderStatus !== "cancelled" ? ESCALATE_ORDER_TO[state.role] : undefined;
   return (
     <div className="callout info order-track" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
       <div className="row-between">
@@ -372,6 +431,7 @@ function OrderTracking({ order: o }: { order: FollowUp }) {
         </strong>
         <Status tone={ORDER_TONE[o.orderStatus ?? "approved"] ?? "neutral"}>{o.orderStatusText ?? o.orderStatus}</Status>
       </div>
+      {headline && <span className="small"><Status tone={headline.tone}>{headline.label}</Status> {headline.text}</span>}
       <span className="small ink-2">
         Expected {expected} · {o.id}
       </span>
@@ -431,6 +491,7 @@ function OrderTracking({ order: o }: { order: FollowUp }) {
           <span className="small muted">Records what procurement did with the supplier.</span>
         </div>
       )}
+      {escalateTo && <EscalateButton objectId={o.id} to={escalateTo} />}
     </div>
   );
 }

@@ -176,3 +176,13 @@ body:has(.sa-page) { background: radial-gradient(1200px 520px at 100% -10%, #fce
   .sa-page .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 14px; }
   .sa-page .flow-step:nth-child(3)::before { display: none; }
 }
+
+/* ---------- Audit Trail: response status table ---------- */
+.sa-page .response-status { margin-bottom: 16px; }
+.sa-page .tablewrap { overflow-x: auto; margin: 0 -20px; }
+.sa-page .response-status tbody tr { cursor: pointer; }
+.sa-page .response-status tbody tr.selected { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
+.sa-page .stage-cell { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sa-page .option-cell { min-width: 220px; max-width: 360px; color: var(--ink-2); }
+.sa-page .detail-cell { min-width: 280px; max-width: 560px; color: var(--ink-2); overflow-wrap: anywhere; }
+.sa-page .nowrap { white-space: nowrap; }

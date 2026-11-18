@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { Card, ChartGuide, Origin, PageHead, SourceChip, TierStatus, formatDays } from "../components/ui";
-import { InfoNotes } from "../components/PageNotes";
+import { Card, ChartGuide, Origin, PageHead, SourceChip, Status, TierStatus, formatDays, type OriginKind, type Tone } from "../components/ui";
 import "./signal-audit.css";
 import { Icon, type IconName } from "../components/icons";
 import { DRUGS, SITES, dayLabel, drugById, siteName, timeLabel } from "../data/mock";
 import { lineCoverage, tierFor, withApprovedPlans } from "../lib/risk";
 import { useStore } from "../lib/store";
-import type { Actor, AuditEntry } from "../lib/types";
+import type { Actor, AuditEntry, Plan } from "../lib/types";
 
 type Filter = "all" | "people" | "agent" | "solver" | "system";
 
@@ -35,15 +34,6 @@ function dot(e: AuditEntry) {
   return "S";
 }
 
-/* The four kinds of actor, in the order work flows through the platform.
-   Drawn as a diagram at the top of the page; each node also filters the timeline. */
-const FLOW: { id: Filter; icon: IconName; title: string; note: string }[] = [
-  { id: "system", icon: "cog", title: "System", note: "Brings data in" },
-  { id: "agent", icon: "sparkle", title: "AI", note: "Reads and explains" },
-  { id: "solver", icon: "route", title: "Planner", note: "Checks and ranks plans" },
-  { id: "people", icon: "user", title: "People", note: "Make every decision" },
-];
-
 export function Audit() {
   const { state } = useStore();
   const [filter, setFilter] = useState<Filter>("all");
@@ -70,34 +60,7 @@ export function Audit() {
         lead={`${state.audit.length} entries · ${humans} by people · ${ai} by the AI · the rest by the planner and system`}
       />
 
-      {/* Diagram: who acts at each stage, with how many entries each made. Click a stage to filter. */}
-      <ol className="actor-flow" aria-label="Who did what">
-        {FLOW.map((f) => {
-          const n = state.audit.filter((a) => FILTERS.find((x) => x.id === f.id)!.match(a.actor)).length;
-          return (
-            <li key={f.id}>
-              <button className={`actor-node ${f.id} ${filter === f.id ? "on" : ""}`} aria-pressed={filter === f.id} onClick={() => setFilter(filter === f.id ? "all" : f.id)}>
-                <span className="actor-ico">
-                  <Icon name={f.icon} size={20} />
-                </span>
-                <span className="actor-text">
-                  <span className="actor-title">{f.title}</span>
-                  <span className="actor-note">{f.note}</span>
-                </span>
-                <span className="actor-count num">{n}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-
-      <InfoNotes
-        items={[
-          { icon: "book", title: "Append-only", text: "Entries can only be added, never edited or removed." },
-          { icon: "clock", title: "Newest first", text: "Entries in the same minute are grouped under one time." },
-          { icon: "link", title: "Trace any number", text: "Pick a drug and hospital on the right to see every record behind its days of stock." },
-        ]}
-      />
+      <Stories />
 
       <div className="grid-2">
         <section className="card">
@@ -268,6 +231,168 @@ function Step({ text, note, refs, icon = "link" }: { text: string; note: string;
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------- Response status: one row per approved plan, then the steps of the selected one ---------- */
+
+type Stage = "detect" | "decide" | "act" | "follow";
+
+const STAGE_WORD: Record<Stage, string> = { detect: "Detected", decide: "Decided", act: "Placed", follow: "Follow-up" };
+
+function stageOf(e: AuditEntry): Stage | null {
+  const a = e.action;
+  if (a === "Order orchestration" || a === "Notification read") return null; // the summary repeats the attempts
+  if (a.startsWith("Signal pipeline") || a === "Requested a plan") return "detect";
+  if (a === "Approved" || a === "Rejected") return "decide";
+  if (/^Order (placed|email ready|rejected|not submitted|escalated to procurement|held|released)/.test(a)) return "act";
+  return "follow";
+}
+
+const AGENT_NAME: Record<string, string> = {
+  "stock-watch": "Stock watch",
+  "signal-agent": "Assessment agent",
+  "order-orchestrator": "Order orchestrator",
+  "order-agent": "Order agent",
+  "followup-agent": "Follow-up agent",
+};
+
+const PIPELINE: Record<string, string> = {
+  plan_generated: "Alert raised, plan options built",
+  needs_review: "Sent for review",
+  ignore: "No action needed",
+};
+
+function actorLabel(e: AuditEntry) {
+  return isHuman(e.actor) ? e.actorName : AGENT_NAME[e.actorName] ?? e.actorName.replace(/-/g, " ");
+}
+
+function actionLabel(e: AuditEntry) {
+  if (e.action.startsWith("Signal pipeline: ")) {
+    const step = e.action.slice("Signal pipeline: ".length);
+    return PIPELINE[step] ?? step.replace(/_/g, " ");
+  }
+  return e.action;
+}
+
+function originOf(e: AuditEntry): OriginKind {
+  return isHuman(e.actor) ? "human" : e.actor === "agent" ? "agent" : "rules";
+}
+
+function planEntries(audit: AuditEntry[], plan: Plan) {
+  const run = plan.solverRun || plan.id;
+  return audit.filter((e) => stageOf(e) && (e.object === run || e.object.startsWith(`${run}-`) || e.refs.includes(run))).slice().reverse();
+}
+
+function planStatus(plan: Plan, entries: AuditEntry[]): [Tone, string] {
+  if ((plan.orders?.length ?? 0) === 0) return ["good", "Transfer approved"];
+  if (entries.some((e) => /^Order (email ready|escalated|held)/.test(e.action))) return ["warn", "Waiting on a person"];
+  if (entries.some((e) => e.action.startsWith("Order placed"))) return ["good", "Order placed"];
+  return ["neutral", "Approved"];
+}
+
+/** The table cell for one stage: who did it (mark + name) and how many entries. */
+function StageCell({ items }: { items: AuditEntry[] }) {
+  if (items.length === 0) return <span className="muted">—</span>;
+  const last = items[items.length - 1];
+  return (
+    <span className="stage-cell">
+      <Origin by={originOf(last)} compact />
+      <span>{actorLabel(last)}</span>
+      {items.length > 1 && <span className="muted small">+{items.length - 1}</span>}
+    </span>
+  );
+}
+
+function Stories() {
+  const { state } = useStore();
+  const approved = state.plans.filter((p) => p.status === "approved");
+  const [selected, setSelected] = useState<string | null>(null);
+  if (!state.live || approved.length === 0) return null;
+
+  const rows = approved.map((plan) => {
+    const entries = planEntries(state.audit, plan);
+    return { plan, entries, status: planStatus(plan, entries) };
+  });
+  const current = rows.find((r) => r.plan.id === selected) ?? rows[0];
+  const placed = rows.filter((r) => r.status[1] === "Order placed").length;
+  const waiting = rows.filter((r) => r.status[1] === "Waiting on a person").length;
+
+  return (
+    <div className="stack response-status" style={{ gap: 16 }}>
+      <Card label={`Approved plans · ${rows.length} · ${placed} order${placed === 1 ? "" : "s"} placed · ${waiting} waiting on a person`} title="Response status">
+        <div className="tablewrap">
+          <table className="table detail-table">
+            <thead>
+              <tr>
+                <th>Drug</th>
+                <th>Approved option</th>
+                <th>Detected</th>
+                <th>Decided</th>
+                <th>Placed</th>
+                <th>Follow-up</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ plan, entries, status }) => {
+                const at = (s: Stage) => entries.filter((e) => stageOf(e) === s);
+                return (
+                  <tr
+                    key={plan.id}
+                    className={plan.id === current.plan.id ? "selected" : ""}
+                    onClick={() => setSelected(plan.id)}
+                    aria-selected={plan.id === current.plan.id}
+                  >
+                    <td>
+                      <b>{drugById(plan.drugId).name}</b>
+                    </td>
+                    <td className="option-cell">{plan.title}</td>
+                    <td><StageCell items={at("detect")} /></td>
+                    <td><StageCell items={at("decide")} /></td>
+                    <td>{(plan.orders?.length ?? 0) === 0 ? <span className="muted">No order</span> : <StageCell items={at("act")} />}</td>
+                    <td><StageCell items={at("follow")} /></td>
+                    <td><Status tone={status[0]}>{status[1]}</Status></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card label="Response detail · oldest first" title={drugById(current.plan.drugId).name} actions={<Status tone={current.status[0]}>{current.status[1]}</Status>}>
+        <div className="tablewrap">
+          <table className="table detail-table">
+            <thead>
+              <tr>
+                <th>Step</th>
+                <th>Done by</th>
+                <th>Action</th>
+                <th>Detail</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {current.entries.map((e) => (
+                <tr key={e.id}>
+                  <td className="nowrap">{STAGE_WORD[stageOf(e)!]}</td>
+                  <td className="nowrap">
+                    <span className="stage-cell">
+                      <Origin by={originOf(e)} compact />
+                      <span>{actorLabel(e)}</span>
+                    </span>
+                  </td>
+                  <td>{actionLabel(e)}</td>
+                  <td className="detail-cell">{e.detail || <span className="muted">—</span>}</td>
+                  <td className="nowrap muted">{timeLabel(e.atMin)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }
