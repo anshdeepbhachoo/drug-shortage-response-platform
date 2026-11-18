@@ -26,11 +26,14 @@ export interface FollowUp {
   to: string;
   units: number;
   approvedAt: string;
+  /** When follow-up expects the transfer to have arrived. */
+  expectedBy?: string;
   decision: "wait" | "nudge" | "escalate" | "replan" | "close" | null;
   status: string;
   confirmed?: number | null;
   hoursOverdue?: number | null;
   checkedAt?: string | null;
+  decidedBy?: "agent" | "rule" | "fallback" | null;
   reason: string;
 }
 

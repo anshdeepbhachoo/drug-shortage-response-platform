@@ -3,7 +3,7 @@ import { SITES, dayLabel, drugById, siteName, siteTag } from "../data/mock";
 import { AMBER_BELOW, applyPlan, coverageDays, evaluatePlan, tierFor } from "../lib/risk";
 import { useStore } from "../lib/store";
 import type { Plan, PlanStatus } from "../lib/types";
-import { Sources, Status, TIER_TONE, formatDays, type Tone } from "./ui";
+import { Origin, Sources, Status, TIER_TONE, formatDays, type Tone } from "./ui";
 
 export const PLAN_STATUS: Record<PlanStatus, { tone: Tone; text: string }> = {
   proposed: { tone: "neutral", text: "Option" },
@@ -74,6 +74,14 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
   const kind = state.live ? plan.optionType : undefined;
   const nonTransfer = kind !== undefined && kind !== "transfer" ? NON_TRANSFER[kind] : undefined;
   // Options that move no stock were checked by the server for what they are; the stock maths does not apply.
+  // Planners write site codes ("from B to A"); people read facility names.
+  const title =
+    state.live && plan.transfers.length
+      ? `Transfer ${plan.transfers.map((t) => `${t.qty} from ${siteName(t.from)} to ${siteName(t.to)}`).join(", ")}`
+      : plan.title;
+  // Substitutions change what patients receive, so the substitute drug is named explicitly.
+  const isSubstitute = plan.optionType === "substitute" || /substitute/i.test(plan.title);
+  const substitute = isSubstitute ? drugById(plan.title.match(/\b\d{8}\b/)?.[0] ?? "") : undefined;
   const { checks, feasible } = nonTransfer
     ? { checks: [{ label: nonTransfer.check, ok: true, hard: true, detail: nonTransfer.checkDetail }], feasible: true }
     : evaluatePlan(plan, state.stock, event, siteName, dayLabel, drug.unit);
@@ -88,8 +96,18 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
       <header className="plan-top">
         <span className="rank">#{plan.rank}</span>
         <div>
-          {state.live && <div className="label" style={{ marginBottom: 4 }}>{planSubject(drug.name, event)}</div>}
-          <h3>{plan.title}</h3>
+          {state.live && (
+            <div className="row" style={{ gap: 6, marginBottom: 4 }}>
+              <Origin by={plan.explanation.startsWith("Rules planner") ? "rules" : "agent"} label={plan.explanation.startsWith("Rules planner") ? "Rules planner" : "Planning agent"} />
+              <span className="label">{planSubject(drug.name, event)}</span>
+            </div>
+          )}
+          <h3>{title}</h3>
+          {isSubstitute && (
+            <div className="sub-callout">
+              <b>Substitute drug:</b> {substitute ? `${substitute.name} (DIN ${substitute.id})` : "see rationale"} · replaces {drug.name} · requires pharmacist sign-off
+            </div>
+          )}
           <div className="row" style={{ marginTop: 4 }}>
             {recommended && feasible && <span className="badge-accent">Recommended</span>}
             {!feasible && <Status tone="crit">Breaks a safety rule</Status>}
@@ -105,7 +123,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
         <div className="plan-cols">
           <div>
             <div className="label" style={{ marginBottom: 8 }}>
-              What moves
+              Transfers
             </div>
             <div className="flow">
               {plan.transfers.map((t, i) => (
@@ -133,7 +151,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
             </div>
 
             <div className="label" style={{ margin: "18px 0 8px" }}>
-              Safety checks (done in code, not by AI)
+              Safety checks (deterministic)
             </div>
             <ul className="checks">
               {hard.map((c) => (
@@ -168,7 +186,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
 
           <div>
             <div className="label" style={{ marginBottom: 8 }}>
-              Days of stock after this plan
+              Days of supply after plan
             </div>
             <div className="bars" role="img" aria-label="Days of stock at each hospital after this plan">
               {SITES.map((s) => {
@@ -204,7 +222,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
 
       {!compact && (
         <details className="why">
-          <summary>{plan.explanation.startsWith("Rules planner") ? "Why this plan (rules planner, no AI)" : "Why this plan, in the AI's words"}</summary>
+          <summary>{plan.explanation.startsWith("Rules planner") ? "Rationale · rules planner" : "Rationale · planning agent"}</summary>
           <div className="inner">
             <p>{plan.explanation}</p>
             <span className="small muted">Every number in this text was checked against the calculation before it was shown.</span>

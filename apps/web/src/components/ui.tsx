@@ -1,5 +1,6 @@
 import { createContext, useContext, useId, useState, type ReactNode } from "react";
 import { SOURCES, dayLabel } from "../data/mock";
+import { useStore } from "../lib/store";
 import type { Tier } from "../lib/types";
 
 /* ---------------------------------------------------------------
@@ -39,12 +40,12 @@ export function Tag({ children, solid }: { children: ReactNode; solid?: boolean 
 /* ---------------------------------------------------------------
    Layout pieces
 ---------------------------------------------------------------- */
-export function PageHead({ title, lead, label }: { title: string; lead: ReactNode; label?: string }) {
+export function PageHead({ title, lead, label }: { title: string; lead?: ReactNode; label?: string }) {
   return (
     <header className="page-head">
-      {label && <span className="label">{label}</span>}
+      {label && !title.includes(label) && <span className="label">{label}</span>}
       <h1>{title}</h1>
-      <p className="lead">{lead}</p>
+      {lead && <p className="lead">{lead}</p>}
     </header>
   );
 }
@@ -434,6 +435,8 @@ export function ProjectionChart({
 export type KeyMark = "bar-good" | "bar-warn" | "bar-crit" | "zone" | "floor" | "after" | "gain" | "line-1" | "line-2" | "dot" | "drop" | "gap" | "danger" | "tick" | "cost" | "ok" | "bad";
 
 export function ChartGuide({ items, example, open = false }: { items: { mark: KeyMark; text: ReactNode }[]; example?: ReactNode; open?: boolean }) {
+  // Reading guides belong to the scripted demo; the live console is for trained staff.
+  if (useStore().state.live) return null;
   return (
     <details className="guide" open={open}>
       <summary>How to read this chart</summary>
@@ -451,5 +454,55 @@ export function ChartGuide({ items, example, open = false }: { items: { mark: Ke
         </p>
       )}
     </details>
+  );
+}
+
+/** Who produced a piece of work: an AI agent, deterministic code, or a person. Icon plus word, never colour alone. */
+export type OriginKind = "agent" | "rules" | "human";
+const ORIGIN_WORD: Record<OriginKind, string> = { agent: "Agent", rules: "Rules", human: "Human" };
+const ORIGIN_HELP: Record<OriginKind, string> = {
+  agent: "Produced by an AI agent",
+  rules: "Produced by deterministic code (rules, calculations, checks)",
+  human: "Done by a person",
+};
+
+function OriginIcon({ kind }: { kind: OriginKind }) {
+  if (kind === "agent")
+    return (
+      <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden focusable="false">
+        <path d="M8 1.5 9.6 6.4 14.5 8 9.6 9.6 8 14.5 6.4 9.6 1.5 8 6.4 6.4Z" fill="currentColor" />
+      </svg>
+    );
+  if (kind === "rules")
+    return (
+      <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden focusable="false">
+        <path d="M5.5 3 2 8l3.5 5M10.5 3 14 8l-3.5 5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden focusable="false">
+      <circle cx="8" cy="5" r="2.8" fill="currentColor" />
+      <path d="M2.5 14.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function Origin({ by, label, compact }: { by: OriginKind; label?: string; compact?: boolean }) {
+  return (
+    <span className={`origin origin-${by}`} title={label ? `${ORIGIN_HELP[by]}: ${label}` : ORIGIN_HELP[by]}>
+      <OriginIcon kind={by} />
+      {compact ? <span className="sr-only">{ORIGIN_WORD[by]}</span> : <span>{label ?? ORIGIN_WORD[by]}</span>}
+    </span>
+  );
+}
+
+/** The key to the three marks. */
+export function OriginLegend() {
+  return (
+    <div className="origin-legend" aria-label="Who did the work">
+      <Origin by="agent" />
+      <Origin by="rules" />
+      <Origin by="human" />
+    </div>
   );
 }
