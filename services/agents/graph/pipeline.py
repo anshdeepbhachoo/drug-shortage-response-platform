@@ -65,6 +65,7 @@ from services.agents.db_data import PostgresData
 from services.agents.followup_db import run_followup
 from services.agents.followup_rules import exclude_failed_donor
 from services.agents.order_agent import draft_requests, resolve_model, run_order_followup
+from services.agents.ordering.orchestrator import submit_orders
 from services.agents.results_store import save_pipeline_result
 from services.agents.rules_planner import rules_planner
 from services.agents.schemas import PlanOption, PlanSet, SupplyEvent
@@ -154,6 +155,7 @@ class AlertState(TypedDict, total=False):
     exclude_site: str | None
     exclude_supplier: str | None  # a replan after an order failed: don't offer that supplier's order again
     order_requests: list[str]     # orders the order agent drafted a supplier request for
+    order_submissions: dict       # what the order orchestrator did with each order: {order_id: [statuses]}
     last_checks: list[dict]       # the latest evening's follow-up checks (kept when a replan resets followup)
     replan: bool
     result: dict | None
@@ -252,14 +254,17 @@ def _model(deps: Deps):
 
 
 def _order(state: AlertState, runtime: Runtime[Deps]) -> AlertState:
-    """The order agent drafts the request to the supplier for the approved order (a person sends it)."""
+    """The order agent drafts the request to the supplier, then the order orchestrator agent places each approved
+    order through a channel sub-agent (SAP ERP, EDI, supplier portal; email for procurement to send)."""
 
     deps = runtime.context
     day = state["decision"].get("day") or state["day"]
-    drafts = draft_requests(deps.write_engine, deps.data(day), datetime.combine(date.fromisoformat(day), time(12)),
-                            _model(deps), plan_id=state["plan_id"])
+    at, data = datetime.combine(date.fromisoformat(day), time(12)), deps.data(day)
+    drafts = draft_requests(deps.write_engine, data, at, _model(deps), plan_id=state["plan_id"])
+    placed = submit_orders(deps.write_engine, data, at, plan_id=state["plan_id"], llm=_model(deps))
     return {"outcome": "order_approved", "followup": [], "replan": False,
-            "order_requests": [d["order_id"] for d in drafts]}
+            "order_requests": [d["order_id"] for d in drafts],
+            "order_submissions": {o: [a["status"] for a in attempts] for o, attempts in placed.items()}}
 
 
 def _order_follow_up(state: AlertState, runtime: Runtime[Deps]) -> AlertState:
@@ -271,17 +276,27 @@ def _order_follow_up(state: AlertState, runtime: Runtime[Deps]) -> AlertState:
                 "exclude_site": None, "exclude_supplier": None}
 
     deps = runtime.context
-    actions = run_order_followup(deps.write_engine, deps.data(value["day"]), datetime.fromisoformat(value["now"]),
-                                 _model(deps), plan_id=state["plan_id"])
-    followup = [{"transfer": a.request_id, "decision": a.decision, "kind": "order"} for a in actions]
+    data, now = deps.data(value["day"]), datetime.fromisoformat(value["now"])
+    # A combined transfer and order: the follow-up agent checks the transfer, the order agent the order.
+    transfers = run_followup(deps.write_engine, data, now, plan_id=state["plan_id"])
+    actions = run_order_followup(deps.write_engine, data, now, _model(deps), plan_id=state["plan_id"])
+    followup = ([{"transfer": a.request_id, "decision": a.decision} for a in transfers]
+                + [{"transfer": a.request_id, "decision": a.decision, "kind": "order"} for a in actions])
     update: AlertState = {"followup": followup, "last_checks": followup, "day": value["day"], "decision": {"type": "tick"},
                           "replan": False}
     replanned = [a.request_id for a in actions if a.decision == "replan"]
-    if replanned:
+    moved = [a.request_id for a in transfers if a.decision == "replan"]
+    if replanned or moved:
         with deps.read_engine.connect() as conn:
-            supplier = conn.execute(text("SELECT supplier_id FROM purchase_order WHERE order_id = :o"),
-                                    {"o": replanned[0]}).scalar_one()
-        update |= {"replan": True, "exclude_supplier": supplier, "trigger": {**state["trigger"], "restore": True}}
+            if replanned:
+                supplier = conn.execute(text("SELECT supplier_id FROM purchase_order WHERE order_id = :o"),
+                                        {"o": replanned[0]}).scalar_one()
+                update |= {"exclude_supplier": supplier}
+            if moved:
+                donor = conn.execute(text("SELECT from_site FROM plan_action WHERE action_id = :a"),
+                                     {"a": moved[0]}).scalar_one()
+                update |= {"exclude_site": donor}
+        update |= {"replan": True, "trigger": {**state["trigger"], "restore": True}}
     return update
 
 
@@ -334,7 +349,8 @@ def _after_decision(state: AlertState) -> str:
 
 def _after_act(state: AlertState) -> str:
     option_type = state["decision"].get("option_type")
-    return {"transfer": "follow_up", "order": "order"}.get(option_type, END)
+    # A combined transfer and order goes the order's way; its evening check follows up the transfer too.
+    return {"transfer": "follow_up", "order": "order", "transfer_order": "order"}.get(option_type, END)
 
 
 def _after_follow_up(state: AlertState) -> str:

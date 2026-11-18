@@ -48,6 +48,30 @@ export interface FollowUp {
   request?: { to: string; subject: string; body: string; decidedBy: "agent" | "rule" } | null;
   /** Orders only: supplier replies the order agent has read, oldest first. */
   replies?: SupplierReply[];
+  /** Orders only: every step the order orchestrator agent took to place it, oldest first. */
+  submissions?: OrderSubmission[];
+  /** Orders only: the orchestrator agent's own summary (or the rules', when they finished the job). */
+  orchestration?: { decided_by: "agent" | "rule"; summary: string; outcome: string | null } | null;
+}
+
+export interface OrderSubmission {
+  channel: string;
+  /** The system it went to, e.g. "Hospital ERP: SAP S/4HANA". */
+  target: string;
+  /** simulate: built and checked, the answer simulated; nothing left the machine. */
+  mode: "simulate" | "live";
+  status: "accepted" | "rejected" | "failed" | "held" | "ready_to_send" | "escalated";
+  externalRef: string | null;
+  note: string | null;
+  at: string;
+  /** The exact payload built for that system (SAP JSON, EDI segments, portal JSON, email). */
+  payload: unknown;
+  /** Who sent the order this way: the orchestrator agent, or the rules (no model, or the agent failed). */
+  chosenBy: "agent" | "rule";
+  /** The orchestrator's brief to the sub-agent: why this channel. */
+  reason: string | null;
+  /** The channel sub-agent's report: how it read the system's answer. */
+  report: { outcome: string; summary: string; read_by: "agent" | "rule"; steps: string[]; flags: string[] } | null;
 }
 
 export interface SupplierReply {
@@ -117,6 +141,11 @@ export const api = {
     ),
   orderStatus: (orderId: string, body: { by: string; role: Role; status: OrderStatus; expected_date?: string; as_of?: string }) =>
     call<{ status: string }>(`/orders/${encodeURIComponent(orderId)}/status`, { method: "POST", body: JSON.stringify(body) }),
+  releaseOrder: (orderId: string, body: { by: string; role: Role; as_of?: string }) =>
+    call<{ attempts: { target: string; status: string; external_ref: string | null; note: string }[] }>(
+      `/orders/${encodeURIComponent(orderId)}/release`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   runFollowup: (now: string, asOf?: string) =>
     call<{ request_id: string; decision: string; reason: string }[]>("/followup/run", {
       method: "POST",

@@ -69,6 +69,12 @@ class OrderStatus(BaseModel):
     as_of: date | None = None
 
 
+class ReleaseOrder(BaseModel):
+    by: str = Field(min_length=1)
+    role: str
+    as_of: date | None = None
+
+
 class RunFollowup(BaseModel):
     now: datetime
     as_of: date | None = None
@@ -215,6 +221,24 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
                                                      UI_ROLES.get(body.role, body.role), body.expected_date, at, body.note))
         except OrderStatusError as error:
             raise HTTPException(409, str(error))
+
+    @app.post("/api/orders/{order_id}/release")
+    def release(order_id: str, body: ReleaseOrder):
+        """Procurement releases an order the orchestrator held (above the auto-submit limit); it is then placed
+        through the supplier's channel. Simulated unless ORDER_SUBMISSION=live."""
+
+        from services.agents.order_agent import resolve_model
+        from services.agents.ordering.orchestrator import ReleaseError, release_order
+
+        try:
+            at = datetime.combine(body.as_of, time(12)) if body.as_of else None
+            attempts = guard(lambda: release_order(write_engine, PostgresData(read_engine, as_of=body.as_of), order_id,
+                                                   body.by, UI_ROLES.get(body.role, body.role), at,
+                                                   resolve_model(None)))
+        except ReleaseError as error:
+            raise HTTPException(409, str(error))
+        return {"order_id": order_id, "attempts": [{k: a[k] for k in ("channel", "target", "status", "external_ref", "note")}
+                                                   for a in attempts]}
 
     @app.post("/api/followup/run")
     def run_followup_check(body: RunFollowup):

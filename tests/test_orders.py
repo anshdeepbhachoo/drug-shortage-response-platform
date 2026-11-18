@@ -101,7 +101,10 @@ def test_both_planners_get_the_order_option_and_it_passes_the_checks():
     result = _plan_for_event(event(), {}, data, None, TODAY, None, planner=rules_planner, restore=True)
     types = [o["type"] for o in result["verified_options"]]
     assert "order" in types
-    assert types.index("order") == sum(t == "transfer" for t in types)
+    # Code's options come right after the transfers: the combined transfer and order (when an order alone
+    # arrives too close to running out), then the order alone.
+    code = [t for t in types if t in ("transfer_order", "order")]
+    assert types.index(code[0]) == sum(t == "transfer" for t in types) and code[-1] == "order"
 
 
 # ---------------------------------------------------------

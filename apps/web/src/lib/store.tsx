@@ -417,6 +417,7 @@ export interface LiveControls {
   planDrug: (din: string, siteId?: string) => Promise<string | null>;
   /** Procurement / supply manager: record what happened to an approved order (placed, received). */
   recordOrder: (orderId: string, status: OrderStatus) => Promise<void>;
+  releaseOrder: (orderId: string) => Promise<void>;
   lastDay: DaySummary | null;
   clear: () => void;
 }
@@ -539,6 +540,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const current = stateRef.current;
       await api.orderStatus(orderId, { by: USERS[current.role].name, role: current.role, status, as_of: current.live?.asOf });
       return `Order ${orderId} recorded as ${status === "delivered" ? "received" : status}.`;
+    }),
+    releaseOrder: (orderId) => run("Releasing the order", async () => {
+      const current = stateRef.current;
+      const result = await api.releaseOrder(orderId, { by: USERS[current.role].name, role: current.role, as_of: current.live?.asOf });
+      const last = result.attempts[result.attempts.length - 1];
+      return last ? `Order ${orderId}: ${last.note}` : `Order ${orderId} released.`;
     }),
     lastDay,
     clear: () => { setError(null); setNotice(null); },

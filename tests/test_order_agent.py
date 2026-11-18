@@ -28,9 +28,11 @@ SNAPSHOT = datetime(2026, 11, 15)
 
 @pytest.fixture(autouse=True)
 def no_supplier_replies(monkeypatch):
-    """These tests follow orders that suppliers never answer (supplier replies: tests/test_order_replies.py)."""
+    """These tests follow orders that suppliers never answer (supplier replies: tests/test_order_replies.py) and
+    that people place by hand (the order orchestrator: tests/test_order_orchestrator.py)."""
 
     monkeypatch.setenv("ORDER_REPLY_STORY", "none")
+    monkeypatch.setenv("ORDER_SUBMISSION", "off")
 
 
 class Data:

@@ -73,6 +73,9 @@ export interface PlanOrder {
   to?: string;
   /** ISO date the order is expected (live data: today plus the standard lead time). */
   expectedDate?: string;
+  /** Approved orders only: "in-stock-line" once placed (the hospital's stock line counts it), "failed" when
+   * cancelled or replanned. Either way the plan's projection leaves it out, so nothing counts twice. */
+  projection?: "in-stock-line" | "failed";
 }
 
 export interface ConstraintCheck {
@@ -111,7 +114,7 @@ export interface Plan {
   sites?: string[];
   createdAt?: string;
   /** Live data: what kind of option this is, and which roles may choose it. */
-  optionType?: "transfer" | "order" | "substitute" | "conserve" | "escalate";
+  optionType?: "transfer" | "order" | "transfer_order" | "substitute" | "conserve" | "escalate";
   chooseRoles?: Role[];
 }
 

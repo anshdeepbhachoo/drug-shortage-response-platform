@@ -173,6 +173,17 @@ function PlanChoice({ options }: { options: Plan[] }) {
       {options.map((p) => {
         const roles = p.chooseRoles ?? [];
         const mayChoose = canDecide && roles.includes(state.role);
+        // Say why the button is off: every greyed-out choice has a reason on screen.
+        const why =
+          state.role === "auditor"
+            ? "Auditors can see every option but cannot choose one."
+            : busy
+              ? "Wait for the current run to finish."
+              : !roles.includes(state.role)
+                ? roles.length
+                  ? `Only ${roles.map(roleName).join(" or ")} can choose this option.`
+                  : "Nobody can choose this option."
+                : null;
         return (
           <PlanCard
             key={p.id}
@@ -180,12 +191,12 @@ function PlanChoice({ options }: { options: Plan[] }) {
             recommended={p === first}
             actions={
               <>
-                {!mayChoose && state.role !== "auditor" && (
+                {why && (
                   <span className="small ink-2" style={{ flex: 1 }}>
-                    {roles.length ? `Only ${roles.map(roleName).join(" or ")} can choose this option.` : "Nobody can choose this option."}
+                    {why}
                   </span>
                 )}
-                <button className="btn primary" disabled={!mayChoose} onClick={() => dispatch({ type: "approve", planId: p.id, note })}>
+                <button className="btn primary" disabled={!mayChoose} title={why ?? undefined} onClick={() => dispatch({ type: "approve", planId: p.id, note })}>
                   Choose option {p.rank}
                 </button>
               </>

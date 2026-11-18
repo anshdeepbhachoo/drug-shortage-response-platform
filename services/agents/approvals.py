@@ -44,6 +44,7 @@ from services.agents.schemas import Move, PlanOption
 APPROVER_ROLES: dict[str, set[str]] = {
     "transfer": {"pharmacy_manager", "supply_manager"},
     "order": {"procurement", "supply_manager"},
+    "transfer_order": {"supply_manager"},                               # both: moves stock and buys it
     "substitute": {"pharmacist"},                                       # clinical decision
     "conserve": {"pharmacist", "pharmacy_manager", "supply_manager"},
     "escalate": {"pharmacist", "pharmacy_manager", "supply_manager"},
@@ -59,6 +60,13 @@ class ApprovalError(Exception):
 # ---------------------------------------------------------
 # Reading plans
 # ---------------------------------------------------------
+
+def option_kind(actions: list[dict]) -> str:
+    """The kind of an option from its rows: transfer and order rows together are a combined transfer_order."""
+
+    types = {a["type"] for a in actions}
+    return "transfer_order" if types == {"transfer", "order"} else actions[0]["type"]
+
 
 def _options(conn: Connection, plan_id: str) -> dict[int, list[dict]]:
     rows = conn.execute(text("""
@@ -94,7 +102,7 @@ def pending_plans(engine: Engine) -> list[dict]:
                 "options": [
                     {
                         "option": index,
-                        "type": actions[0]["type"],
+                        "type": option_kind(actions),
                         "verified": all(a["verified"] for a in actions),
                         "description": actions[0]["description"],
                         "moves": [f"{a['from_site']}->{a['to_site']} {a['units']}" for a in actions if a["units"]],
@@ -153,6 +161,28 @@ def recheck_order(data, din: str, actions: list[dict], today: date) -> list[str]
     return problems
 
 
+def recheck_combined(data, din: str, actions: list[dict], detail: dict | None, today: date) -> list[str]:
+    """A transfer and order option against today's stock: the same checks it passed when it was made
+    (orders.check_combined), with the order's dates as given (already shifted to the approval day)."""
+
+    from services.agents.orders import check_combined
+    from services.agents.schemas import OrderLine
+
+    detail = detail or {}
+    stock = {row["site_id"]: {"on_hand": row["on_hand"], "daily_use": row["daily_use"]} for row in data.stock(din)}
+    suppliers = data.suppliers(din) if hasattr(data, "suppliers") else []
+    names = {s["supplier_id"]: s["supplier"] for s in suppliers}
+    option = PlanOption(
+        type="transfer_order", description="approval re-check", reasoning="approval re-check",
+        moves=[Move(from_site=a["from_site"], to_site=a["to_site"], units=a["units"]) for a in actions if a["type"] == "transfer"],
+        order_lines=[OrderLine(site_id=a["to_site"], supplier_id=a["supplier_id"], supplier=names.get(a["supplier_id"], a["supplier_id"]),
+                               units=a["units"], expected_date=str(a["expected_date"])) for a in actions if a["type"] == "order"],
+    )
+    shortfall = detail.get("shortfall") or {o.site_id: o.units for o in option.order_lines}
+    return check_combined(option, stock, shortfall, suppliers, today, min_arrival_days=0,
+                          reserve_days=detail.get("cover_days") or {}, floor_days=DEFAULT_FLOOR_DAYS)
+
+
 def shift_order_dates(actions: list[dict], planned_on: date, today: date) -> list[dict]:
     """The lead time starts when a person approves, not when the plan was made: a plan that waited two days
     for approval arrives two days later."""
@@ -161,6 +191,9 @@ def shift_order_dates(actions: list[dict], planned_on: date, today: date) -> lis
     shifted = []
     for action in actions:
         expected = action["expected_date"]
+        if expected is None:  # a transfer row of a combined option
+            shifted.append(action)
+            continue
         expected = date.fromisoformat(expected) if isinstance(expected, str) else expected
         shifted.append({**action, "expected_date": expected + timedelta(days=waited)})
     return shifted
@@ -170,7 +203,7 @@ def _record_orders(conn: Connection, plan, actions: list[dict]) -> list[str]:
     """One approved purchase order per order line. Approved means authorised: nothing is sent."""
 
     ids = []
-    for action in actions:
+    for action in [a for a in actions if a["type"] == "order"]:
         order_id = f"PO-{action['action_id']}"
         conn.execute(text("""
             INSERT INTO purchase_order (order_id, din, site_id, supplier_id, qty, status, expected_date,
@@ -248,7 +281,7 @@ def approve_plan(
             raise ApprovalError(f"Plan {plan_id} has no option {option}; options are {sorted(options)}.")
 
         actions = options[option]
-        kind = actions[0]["type"]
+        kind = option_kind(actions)
         if not all(a["verified"] for a in actions):
             raise ApprovalError(f"Option {option} ({kind}) did not pass the checks and cannot be approved.")
         allowed = APPROVER_ROLES.get(kind, set())
@@ -257,7 +290,7 @@ def approve_plan(
 
         refs = [plan_id, plan.event_id] + [a["action_id"] for a in actions]
 
-        if kind in ("transfer", "order"):
+        if kind in ("transfer", "order", "transfer_order"):
             if kind == "transfer":
                 problems = recheck_transfer(data, plan.din, actions, plan.detail)
             else:
@@ -265,7 +298,8 @@ def approve_plan(
                 planned_on = (plan.detail or {}).get("planned_on")
                 planned_on = date.fromisoformat(planned_on) if planned_on else plan.created_at.date()
                 actions = shift_order_dates(actions, planned_on, today)
-                problems = recheck_order(data, plan.din, actions, today)
+                problems = (recheck_order(data, plan.din, actions, today) if kind == "order"
+                            else recheck_combined(data, plan.din, actions, plan.detail, today))
             if problems:
                 conn.execute(text("UPDATE plan SET status = 'broken' WHERE plan_id = :p"), {"p": plan_id})
                 audit_id = _audit(conn, "approvals", "rule", "Approval refused: plan no longer safe", plan_id,
@@ -278,7 +312,7 @@ def approve_plan(
             VALUES (:plan_id, :actor, :role, 'approved', :note, :option, COALESCE(:at, now()))
         """), {"plan_id": plan_id, "actor": by, "role": role, "note": note, "option": option, "at": at})
         conn.execute(text("UPDATE plan SET status = 'approved' WHERE plan_id = :p"), {"p": plan_id})
-        order_ids = _record_orders(conn, plan, actions) if kind == "order" else []
+        order_ids = _record_orders(conn, plan, actions) if kind in ("order", "transfer_order") else []
         # The alert now has an approved response; follow-up tracks it from here.
         conn.execute(text("UPDATE supply_event SET status = 'mitigated' WHERE event_id = :e AND status = 'open'"),
                      {"e": plan.event_id})

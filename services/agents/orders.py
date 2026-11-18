@@ -13,6 +13,12 @@ The option is only offered when every at-risk hospital still has stock on the
 day its order arrives. check_order re-checks all of it, and approving an order
 records an approved purchase order: nothing is sent to a supplier from here.
 
+Transfer and order (combined_option): when an order alone would arrive too late,
+or with less than BRIDGE_MARGIN_DAYS to spare, a transfer from hospitals with
+spare stock bridges each one until it arrives, and the order restocks it. The
+transfer covers only the days until the order arrives (plus the margin); the
+order covers the whole shortfall. check_combined checks both halves together.
+
 ORDER_LEAD_DAYS is an assumption (the synthetic data has no supplier lead
 times); the supplier's confirmed date replaces it once replies are read.
 """
@@ -23,11 +29,13 @@ import math
 import os
 from datetime import date, timedelta
 
-from services.agents.schemas import OrderLine, PlanOption, PlanSet
+from services.agents.schemas import Move, OrderLine, PlanOption, PlanSet
 
 ORDER_LEAD_DAYS = int(os.environ.get("ORDER_LEAD_DAYS", "5"))
 # An order may not leave a hospital with more than this many days of supply (no stockpiling).
 MAX_ORDER_DAYS = 60
+# A combined option's transfer keeps each hospital going this many days past its order's arrival.
+BRIDGE_MARGIN_DAYS = 2
 
 
 def arrival_days(delay_days: int, restore: bool, lead_days: int = ORDER_LEAD_DAYS) -> int:
@@ -91,15 +99,127 @@ def order_option(*, stock_rows: list[dict], shortfall: dict, suppliers: list[dic
     )
 
 
-def with_order_option(plan: PlanSet, option: PlanOption | None) -> PlanSet:
-    """The plan with the code's order option placed after its transfers (planner order options are dropped:
-    orders come from code only)."""
+def with_order_option(plan: PlanSet, option: PlanOption | None, combined: PlanOption | None = None) -> PlanSet:
+    """The plan with the code's order options placed after its transfers: the combined transfer and order
+    first, then the order alone. Planner order options are dropped: orders come from code only."""
 
-    options = [o for o in plan.options if o.type != "order"]
-    if option is not None:
-        at = sum(1 for o in options if o.type == "transfer")
-        options = options[:at] + [option] + options[at:]
-    return PlanSet(options=options[:4], no_perfect_plan=plan.no_perfect_plan)
+    options = [o for o in plan.options if o.type not in ("order", "transfer_order")]
+    added = [o for o in (combined, option) if o is not None]
+    at = sum(1 for o in options if o.type == "transfer")
+    options = options[:at] + added + options[at:]
+    return PlanSet(options=options[:5], no_perfect_plan=plan.no_perfect_plan)
+
+
+def _lines(shortfall: dict, stock: dict, suppliers: list[dict], expected: date) -> list[OrderLine] | None:
+    lines = []
+    for site_id in sorted(shortfall):
+        supplier = _pick_supplier(suppliers, site_id)
+        if site_id not in stock or supplier is None:
+            return None
+        lines.append(OrderLine(site_id=site_id, supplier_id=supplier["supplier_id"], supplier=supplier["supplier"],
+                               units=shortfall[site_id], expected_date=expected.isoformat()))
+    return lines
+
+
+def bridge_need(row: dict, arrives_in: int, margin: int = BRIDGE_MARGIN_DAYS) -> int:
+    """Units a hospital needs to last until its order arrives, plus the margin (0 when it already does)."""
+
+    return max(0, math.ceil(row["daily_use"] * (arrives_in + margin) - row["on_hand"]))
+
+
+def combined_option(*, stock_rows: list[dict], shortfall: dict, suppliers: list[dict], today: date, delay_days: int,
+                    restore: bool, reserve_days: dict, lead_days: int = ORDER_LEAD_DAYS) -> PlanOption | None:
+    """A transfer that bridges every hospital until its order arrives, plus the order. None when no hospital
+    needs a bridge (the order alone is enough), the bridge would move as much as transferring the whole
+    shortfall (then the transfer alone is better), or the other hospitals cannot spare the bridge."""
+
+    from services.agents.rules_planner import APPROVAL_SLACK_DAYS, MIN_RESERVE_DAYS
+
+    if not shortfall or not suppliers:
+        return None
+    stock = {row["site_id"]: row for row in stock_rows}
+    days = arrival_days(delay_days, restore, lead_days)
+    need = {site: bridge_need(stock[site], days) for site in shortfall if site in stock}
+    need = {site: units for site, units in need.items() if units > 0}
+    if not need or sum(need.values()) >= sum(shortfall.values()):
+        return None  # the order alone is enough, or the bridge moves as much as a transfer of the whole gap
+    lines = _lines(shortfall, stock, suppliers, today + timedelta(days=days))
+    if lines is None:
+        return None
+
+    spare = {}
+    for site_id, row in stock.items():
+        if site_id in shortfall or row["daily_use"] <= 0:
+            continue
+        keep = max(MIN_RESERVE_DAYS, reserve_days.get(site_id, 0)) + APPROVAL_SLACK_DAYS
+        spare[site_id] = max(0, math.floor(row["on_hand"] - row["daily_use"] * keep))
+    if sum(spare.values()) < sum(need.values()):
+        return None
+    moves = []
+    for site_id in sorted(need, key=need.get, reverse=True):
+        left = need[site_id]
+        for donor in sorted(spare, key=spare.get, reverse=True):
+            units = min(left, spare[donor])
+            if units > 0:
+                moves.append(Move(from_site=donor, to_site=site_id, units=units))
+                spare[donor] -= units
+                left -= units
+            if left == 0:
+                break
+
+    names = {row["site_id"]: row.get("site") or row["site_id"] for row in stock_rows}
+    moved = ", ".join(f"{m.units} from {names[m.from_site]} to {names[m.to_site]}" for m in moves)
+    ordered = "; ".join(f"{l.units} for {names[l.site_id]} from {l.supplier}" for l in lines)
+    short = ", ".join(sorted(names[s] for s in need))
+    return PlanOption(
+        type="transfer_order",
+        description=f"Transfer {moved} now, and order {ordered}",
+        moves=moves,
+        order_lines=lines,
+        reasoning=(f"Order rules: an order alone arrives {days} days after approval, too close to when {short} "
+                   f"runs out. The transfer keeps each hospital going until the order arrives, plus "
+                   f"{BRIDGE_MARGIN_DAYS} days, from hospitals that keep their reserve; the order restocks the whole "
+                   f"shortfall. The date is unconfirmed until the supplier confirms it."),
+    )
+
+
+def check_combined(option: PlanOption, stock: dict, shortfall: dict, suppliers: list[dict], today: date,
+                   min_arrival_days: int, reserve_days: dict | None = None, floor_days: float = 14) -> list[str]:
+    """Empty only when both halves pass: the transfer (donor floors, each hospital bridged until its order
+    arrives plus the margin) and the order (checked on the stock after the transfer)."""
+
+    from services.agents.checks import check_transfer
+
+    if option.type != "transfer_order":
+        return ["Only transfer and order options can be verified by this function."]
+    if not option.moves or not option.order_lines:
+        return ["A transfer and order option needs both a transfer and an order."]
+
+    need = {}
+    for line in option.order_lines:
+        row = stock.get(line.site_id)
+        try:
+            arrives_in = (date.fromisoformat(line.expected_date) - today).days
+        except ValueError:
+            continue  # check_order reports the bad date
+        if row is not None:
+            units = bridge_need(row, arrives_in)
+            if units:
+                need[line.site_id] = units
+    if not need:
+        return ["No hospital needs a transfer before its order arrives; the order alone is enough."]
+
+    transfer = PlanOption(type="transfer", description=option.description, moves=option.moves, reasoning="")
+    problems = check_transfer(transfer, stock, need, floor_days=floor_days, reserve_days=reserve_days)
+    problems += [f"{site} is itself short of stock and cannot donate."
+                 for site in sorted({m.from_site for m in option.moves} & set(shortfall) - set(need))]
+    after = {site: dict(row) for site, row in stock.items()}
+    for move in option.moves:
+        if move.from_site in after and move.to_site in after:
+            after[move.from_site]["on_hand"] -= move.units
+            after[move.to_site]["on_hand"] += move.units
+    order = PlanOption(type="order", description=option.description, order_lines=option.order_lines, reasoning="")
+    return problems + check_order(order, after, shortfall, suppliers, today, min_arrival_days)
 
 
 def check_order(option: PlanOption, stock: dict, shortfall: dict, suppliers: list[dict], today: date,

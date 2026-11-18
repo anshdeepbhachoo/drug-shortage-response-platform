@@ -14,7 +14,9 @@ Split of responsibilities, as in followup.py:
   them. Hard rules decide the clear cases without the model.
 - The model only chooses among the decisions code allows, in grey zones, and
   drafts wording. Its choice is checked; on any failure the fallback rules decide.
-- Nothing is sent or placed. People record what happened (placed, received,
+- The agent sends nothing itself. The order orchestrator (ordering/) places approved
+  orders through each supplier's channel (simulated in the MVP); people record what
+  else happened (placed by email, received,
   cancelled) with record_order_status; follow-up reads that.
 
 Every check is written to audit_log (actor "order-agent"), and state across runs
@@ -110,17 +112,20 @@ class RequestDraft(BaseModel):
 # ---------------------------------------------------------
 
 def order_facts(order: WatchedOrder, stock_rows, snapshot: datetime, now: datetime, nudges_sent: int,
-                last_nudged_at: datetime | None, supplier: dict | None = None) -> dict:
+                last_nudged_at: datetime | None, supplier: dict | None = None, bridge_units: int = 0) -> dict:
     """The numbers a decision is based on. The order's own units are not counted until it arrives.
 
     supplier: what the supplier's replies said so far, from code-checked readings:
               {"confirmed": bool, "reply": latest kind or None, "units_confirmed": int or None}
+    bridge_units: units the same plan's approved transfer brings to this hospital (a combined transfer and
+              order). Counted as arriving: the follow-up agent watches that transfer.
     """
 
     supplier = supplier or {}
     confirmed = bool(supplier.get("confirmed"))
 
-    site = project_stock(stock_rows, snapshot, now)[order.site_id]
+    site = dict(project_stock(stock_rows, snapshot, now)[order.site_id])
+    site["on_hand"] += bridge_units
     cover = round(site["on_hand"] / site["daily_use"], 2) if site["daily_use"] > 0 else math.inf
     # Due by the end of its expected day: an order is late only once that day is over.
     due = datetime.combine(order.expected_date + timedelta(days=1), time())
@@ -143,6 +148,7 @@ def order_facts(order: WatchedOrder, stock_rows, snapshot: datetime, now: dateti
         "days_to_arrival": days_to_arrival,
         "overdue": days_to_arrival < 0 and order.status != "delivered",
         "site": order.site_id,
+        "bridge_units": bridge_units,
         "site_cover_days": cover,
         # How long the hospital's stock outlasts the order's arrival. Negative: it runs out first.
         "margin_days": round(cover - max(0.0, days_to_arrival), 2) if cover != math.inf else math.inf,
@@ -459,14 +465,17 @@ REPLY>>>
         return order, supplier, flags, readings
 
     def check(self, order: WatchedOrder, now: datetime, nudges_sent: int = 0,
-              last_nudged_at: datetime | None = None, replies=(), supplier: dict | None = None) -> FollowUpAction:
-        """replies: supplier replies that arrived since the last check. supplier: what earlier replies said."""
+              last_nudged_at: datetime | None = None, replies=(), supplier: dict | None = None,
+              bridge_units: int = 0) -> FollowUpAction:
+        """replies: supplier replies that arrived since the last check. supplier: what earlier replies said.
+        bridge_units: what the plan's own approved transfer brings to the hospital (see order_facts)."""
 
         trace = []
         if not replies:
             trace.append("No new supplier replies.")
         order, supplier, flags, readings = self.read_replies(order, replies, now, supplier or {}, trace)
-        facts = order_facts(order, self.data.stock(order.din), self.snapshot, now, nudges_sent, last_nudged_at, supplier)
+        facts = order_facts(order, self.data.stock(order.din), self.snapshot, now, nudges_sent, last_nudged_at, supplier,
+                            bridge_units)
         trace.append(f"Facts: status {facts['order_status']}, arrives in {facts['days_to_arrival']} days, "
                      f"{facts['site']} lasts {facts['site_cover_days']} days, margin {facts['margin_days']}.")
         message_draft, allowed = None, None
@@ -563,7 +572,7 @@ def history(engine: Engine, order_ids: list[str]) -> dict[str, list[dict]]:
     with engine.connect() as conn:
         rows = conn.execute(text("""
             SELECT object, detail FROM audit_log
-            WHERE actor = :actor AND object = ANY(CAST(:ids AS text[]))
+            WHERE actor = :actor AND object = ANY(CAST(:ids AS text[])) AND action <> 'Supplier date recorded'
             ORDER BY audit_id
         """), {"actor": ACTOR, "ids": order_ids}).all()
     for row in rows:
@@ -600,6 +609,23 @@ def draft_requests(engine: Engine, data, now: datetime, llm: LLM | None = None, 
             if not any(r.get("kind") == "request" for r in past[order_id])]
 
 
+def bridge_units(engine: Engine, orders) -> dict[str, int]:
+    """Per order: units the same approved plan transfers to its hospital (a combined transfer and order),
+    unless the follow-up agent replanned that transfer (it failed) or closed it (received, so in the stock)."""
+
+    result = {}
+    with engine.connect() as conn:
+        for order in orders:
+            result[order.order_id] = conn.execute(text("""
+                SELECT COALESCE(sum(a.units), 0) FROM plan_action a
+                JOIN decision d ON d.plan_id = a.plan_id AND d.option_index = a.option_index AND d.decision = 'approved'
+                WHERE a.plan_id = :p AND a.type = 'transfer' AND a.to_site = :s
+                  AND NOT EXISTS (SELECT 1 FROM audit_log l WHERE l.actor = 'follow-up-agent' AND l.object = a.action_id
+                                  AND l.detail->>'decision' IN ('replan', 'close'))
+            """), {"p": order.plan_id, "s": order.site_id}).scalar_one()
+    return result
+
+
 def date_writer(engine: Engine):
     """Records a supplier's code-checked delivery date on the purchase order, with an audit entry."""
 
@@ -625,8 +651,11 @@ def run_order_followup(engine: Engine, data, now: datetime, llm: LLM | None = No
     replies: {order_id: [OrderReply]}; default the synthetic replies (order_replies.scenario_replies).
     Each reply is read once, at the first check after it arrives."""
 
+    from services.agents.ordering.orchestrator import submit_orders
+
     now = _naive_utc(now)
     draft_requests(engine, data, now, llm, plan_id)  # orders approved before drafting existed still get one
+    submit_orders(engine, data, now, plan_id, llm)   # and any approved order the orchestrator has not placed yet
     orders = {o.order_id: o for o in approved_orders(engine, plan_id)}
     past = history(engine, list(orders))
     agent = OrderAgent(data, _snapshot(engine, data), llm, audit_writer(engine, orders), date_writer(engine))
@@ -636,6 +665,7 @@ def run_order_followup(engine: Engine, data, now: datetime, llm: LLM | None = No
             drug, site = agent._names(order)
             names[order_id] = {"drug": drug, "site": site}
         replies = scenario_replies(orders.values(), names)
+    bridges = bridge_units(engine, orders.values())
     actions = []
     for order_id, order in orders.items():
         checks = [r for r in past[order_id] if r.get("kind") != "request"]
@@ -648,7 +678,7 @@ def run_order_followup(engine: Engine, data, now: datetime, llm: LLM | None = No
         new = [reply for reply in replies.get(order_id, []) if reply.received_at <= now and reply.reply_id not in read]
         supplier = next((r["supplier"] for r in reversed(checks) if r.get("supplier")), {})
         actions.append(agent.check(order, now, len(nudges), datetime.fromisoformat(nudges[-1]["at"]) if nudges else None,
-                                   new, supplier))
+                                   new, supplier, bridges.get(order_id, 0)))
     return actions
 
 

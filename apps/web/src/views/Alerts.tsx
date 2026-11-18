@@ -265,6 +265,97 @@ const REPLY_WORD: Record<string, string> = {
   question: "Question",
   unrelated: "Unrelated",
 };
+const SUBMIT_WORD: Record<string, string> = {
+  accepted: "Placed",
+  rejected: "Rejected",
+  failed: "Not submitted",
+  held: "Held for release",
+  ready_to_send: "Email ready",
+  escalated: "Escalated",
+};
+const SUBMIT_TONE: Record<string, Tone> = {
+  accepted: "good", rejected: "crit", failed: "crit", held: "warn", ready_to_send: "warn", escalated: "crit",
+};
+const SUB_AGENT: Record<string, string> = {
+  sap_erp: "SAP sub-agent", edi_x12: "EDI sub-agent", supplier_portal: "Portal sub-agent", email: "Email sub-agent",
+};
+const OUTCOME_WORD: Record<string, string> = {
+  accepted: "order placed",
+  handed_to_person: "handed to procurement",
+  try_other_channel: "try another channel",
+  needs_person: "a person must act",
+  not_submitted: "not submitted",
+};
+
+/** What the order orchestrator agent did: each hand-off to a channel sub-agent (who chose it and why), how
+ * the sub-agent read the system's answer, and the exact payload built for that system. */
+function Submissions({ order: o }: { order: FollowUp }) {
+  const { state, live } = useStore();
+  const attempts = o.submissions ?? [];
+  if (!attempts.length) return null;
+  const last = attempts[attempts.length - 1];
+  const canRelease = last.status === "held" && (state.role === "procurement" || state.role === "supply") && live.busy === null;
+  const summary = o.orchestration;
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      {summary && (
+        <span className="small">
+          <Origin by={summary.decided_by === "agent" ? "agent" : "rules"}
+            label={summary.decided_by === "agent" ? "Order orchestrator agent" : "Order orchestrator rules"} compact />{" "}
+          <strong>Orchestrator:</strong> {summary.summary}
+        </span>
+      )}
+      {attempts.map((a, i) => (
+        <details key={i}>
+          <summary className="small">
+            <Origin by={a.chosenBy === "agent" ? "agent" : "rules"}
+              label={a.chosenBy === "agent" ? "Chosen by the orchestrator agent" : "Chosen by the orchestrator rules"} compact />{" "}
+            <Status tone={SUBMIT_TONE[a.status] ?? "neutral"}>{SUBMIT_WORD[a.status] ?? a.status}</Status>{" "}
+            {SUB_AGENT[a.channel] ? `${SUB_AGENT[a.channel]} → ${a.target}` : a.target}
+            {a.externalRef ? ` · ref ${a.externalRef}` : ""}
+          </summary>
+          <div className="stack" style={{ gap: 4, paddingLeft: 4 }}>
+            {a.reason && <span className="small ink-2">Brief: {a.reason}</span>}
+            {a.note && <span className="small ink-2">System answered: {a.note}</span>}
+            {a.report && (
+              <span className="small">
+                <Origin by={a.report.read_by === "agent" ? "agent" : "rules"}
+                  label={a.report.read_by === "agent" ? (SUB_AGENT[a.channel] ?? "Sub-agent") : "Sub-agent rules"} compact />{" "}
+                Read as <strong>{OUTCOME_WORD[a.report.outcome] ?? a.report.outcome}</strong>: {a.report.summary}
+              </span>
+            )}
+            {a.report?.steps?.length ? (
+              <ol className="small muted" style={{ margin: 0, paddingLeft: 18 }}>
+                {a.report.steps.map((s, j) => <li key={j}>{s}</li>)}
+              </ol>
+            ) : null}
+            {a.payload != null && (
+              <pre className="small ink-2" style={{ whiteSpace: "pre-wrap", overflowX: "auto", maxHeight: 220 }}>
+                {Array.isArray((a.payload as { segments?: string[] }).segments)
+                  ? (a.payload as { segments: string[] }).segments.join("~\n")
+                  : JSON.stringify(a.payload, null, 2)}
+              </pre>
+            )}
+            {a.status !== "escalated" && a.status !== "held" && (
+              <p className="small muted">
+                {a.mode === "simulate"
+                  ? "Simulated: the payload was built and checked in code and the system's answer simulated. Nothing left this machine."
+                  : "Sent to the live system."}
+              </p>
+            )}
+          </div>
+        </details>
+      ))}
+      {canRelease && (
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn" onClick={() => void live.releaseOrder(o.id)}>Release to supplier</button>
+          <span className="small muted">Above the auto-submit limit: a person releases it.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const REPLY_TONE: Record<string, Tone> = { confirmed: "good", partial: "warn", delayed: "warn", backordered: "crit", cancelled: "crit", question: "warn" };
 
 /** An approved order: where it stands, the order agent's latest check and its request to the supplier.
@@ -300,6 +391,7 @@ function OrderTracking({ order: o }: { order: FollowUp }) {
           <p className="small ink-2" style={{ whiteSpace: "pre-wrap" }}>{o.messageDraft}</p>
         </details>
       )}
+      <Submissions order={o} />
       {(o.replies ?? []).map((r, i) => (
         <details key={i}>
           <summary className="small">

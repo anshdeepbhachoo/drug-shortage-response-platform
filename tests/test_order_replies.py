@@ -25,6 +25,13 @@ from tests.test_order_agent import SNAPSHOT, Data, an_order
 NOV16_EVENING = datetime(2026, 11, 16, 18)
 
 
+@pytest.fixture(autouse=True)
+def people_place_orders(monkeypatch):
+    """Orders here are placed by hand, so the replies alone decide (the orchestrator: test_order_orchestrator.py)."""
+
+    monkeypatch.setenv("ORDER_SUBMISSION", "off")
+
+
 def reply(kind=None, text="Re: PO-P-1-O2. We confirm the order.", units=None, new_date=None, confidence=0.95,
           at=datetime(2026, 11, 16, 10), reply_id="r1"):
     reading = None if kind is None else {"kind": kind, "confirmed_units": units,
@@ -228,6 +235,7 @@ def test_the_suppliers_confirmation_then_delay_are_read_on_the_evenings_they_arr
         (expected[0] + timedelta(days=3), expected[0] + timedelta(days=3))]
     [(action, actor)] = rows(engine, "SELECT action, actor FROM audit_log WHERE action = 'Supplier date recorded'")
     assert actor == "order-agent"
+    assert tick(engine, date(2026, 11, 19)) == [{"transfer": order_id, "decision": "wait", "kind": "order"}]  # next evening
 
     state = client(engine).get("/api/state", params={"as_of": "2026-11-19"}).json()
     [mine] = [f for f in state["followups"] if f["id"] == order_id]
