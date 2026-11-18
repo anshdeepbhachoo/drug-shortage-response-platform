@@ -26,6 +26,10 @@ needs the model (except hostile ones, which the security screen stops first).
 
   python -m services.agents.daily_run --day 2026-11-15
   python -m services.agents.daily_run --day 2026-11-16 --planner rules
+  python -m services.agents.daily_run --day 2026-11-16 --orchestrator classic
+
+Orchestration: the steps run as a LangGraph graph by default (services/agents/graph/daily.py);
+--orchestrator classic (or PIPELINE_ORCHESTRATOR=classic) runs the same steps in plain Python order.
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ import argparse
 import json
 import logging
 import os
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
@@ -44,7 +49,7 @@ from sqlalchemy.engine import Engine
 from ingestion.synthetic_loader import PROGRESSION_DAYS, load_folder
 from services.agents.agent import process_email, process_event
 from services.agents.db_data import PostgresData
-from services.agents.followup_db import run_followup
+from services.agents.followup_db import approved_transfers, run_followup
 from services.agents.results_store import open_event_for, save_pipeline_result
 from services.agents.rules_planner import rules_planner
 from services.agents.schemas import SupplyEvent
@@ -206,6 +211,203 @@ def _record(engine: Engine, day: date, summary: dict) -> None:
         """), {"day": day.isoformat(), "detail": json.dumps(summary, default=str), "refs": [day.isoformat()]})
 
 
+@dataclass
+class DayContext:
+    """Everything one simulated day's steps share. Built once per run, never stored."""
+
+    write_engine: Engine
+    read_engine: Engine
+    day: date
+    llm: object = None
+    planner: str = "auto"
+    max_plans: int = MAX_PLANS_PER_DAY
+    inbox: dict[str, list[str]] | None = None
+    days_root: Path = PROGRESSION_DAYS
+    has_model: bool = field(init=False)
+    use_rules: bool = field(init=False)
+    # The LangGraph agentic pipeline (services/agents/graph/pipeline.py). None: the classic code path.
+    pipeline: object = field(default=None, init=False)
+
+    def __post_init__(self):
+        self.has_model = model_available(self.llm)
+        self.use_rules = self.planner == "rules" or (self.planner == "auto" and not self.has_model)
+        if self.inbox is None:
+            self.inbox = load_inbox()
+
+    @property
+    def code_planner(self):
+        return rules_planner if self.use_rules else None
+
+    @property
+    def data(self) -> PostgresData:
+        return PostgresData(self.read_engine, as_of=self.day)
+
+
+# ---------------------------------------------------------
+# The day's steps. run_day calls them in order; the LangGraph
+# pipeline (services/agents/graph/daily.py) calls the same functions
+# as graph nodes, so both orchestrators do exactly the same work.
+# ---------------------------------------------------------
+
+def step_ingest(ctx: DayContext) -> dict:
+    """1. Load that day's hospital data (stock, usage, orders). Safe to re-run."""
+
+    folder = Path(ctx.days_root) / ctx.day.isoformat()
+    return {"ingested": load_folder(ctx.write_engine, folder)["rows_ok"] if folder.is_dir() else 0}
+
+
+def step_inbox(ctx: DayContext) -> dict:
+    """2. Supplier emails that arrive today: screen, assessment agent, plan, save (joining the drug's alert)."""
+
+    data = ctx.data
+    emails = []
+    for name in ctx.inbox.get(ctx.day.isoformat(), []):
+        path = EMAILS / Path(name).name
+        source_ref = str(path.relative_to(ROOT))
+        if not path.is_file():
+            emails.append({"email": name, "status": "missing"})
+            continue
+        if open_event_for(ctx.write_engine, source_ref):
+            emails.append({"email": name, "status": "already open"})
+            continue
+        body = path.read_text(encoding="utf-8")
+        if not ctx.has_model and not inspect_supplier_email(body).suspicious:
+            emails.append({"email": name, "status": "waiting: reading emails needs the model"})
+            continue
+        if ctx.pipeline is not None:
+            # Agentic pipeline: intake graph (screen, assessment agent), then the drug's alert graph.
+            notice = ctx.pipeline.read_notice(body, ctx.day)
+            if notice["outcome"] == "plan":
+                din = notice["event"]["drug_din"]
+                existing = living_event(ctx.write_engine, din)
+                trigger = {"event": notice["event"], "save": {"source_ref": source_ref}, "agent_planner": True}
+                result = ctx.pipeline.signal(din, trigger, ctx.day)["result"]
+            else:
+                result = notice["result"]
+                din = (result.get("assessment") or {}).get("drug_din")
+                existing = living_event(ctx.write_engine, din) if din else None
+                save_pipeline_result(ctx.write_engine, result, source_ref=source_ref, event_id=existing)
+            emails.append({"email": name, "status": result["status"] + (" (updated the drug's existing alert)" if existing else "")})
+            continue
+        result = process_email(body, data=data, llm=ctx.llm, today=ctx.day)
+        din = (result.get("assessment") or {}).get("drug_din")
+        existing = living_event(ctx.write_engine, din) if din else None
+        save_pipeline_result(ctx.write_engine, result, source_ref=source_ref, event_id=existing)
+        emails.append({"email": name, "status": result["status"] + (" (updated the drug's existing alert)" if existing else "")})
+    return {"emails": emails}
+
+
+def step_detect(ctx: DayContext) -> dict:
+    """3a. Stock watch (code only): which drugs need a new or redone plan today."""
+
+    data = ctx.data
+    previous = PostgresData(ctx.read_engine, as_of=ctx.day - timedelta(days=1))
+    to_plan, unchanged = [], 0
+    for alert in find_at_risk(data, previous, ctx.day):
+        existing = living_event(ctx.write_engine, alert["din"])
+        if existing is None:
+            to_plan.append({"alert": alert, "existing": None, "why": "new"})
+            continue
+        reason = plan_needs_redo(ctx.write_engine, data, existing, alert)
+        if reason:
+            to_plan.append({"alert": alert, "existing": existing, "why": reason})
+        else:
+            unchanged += 1
+    return {"to_plan": to_plan, "unchanged": unchanged}
+
+
+def step_plan_alerts(ctx: DayContext, to_plan: list[dict], unchanged: int) -> dict:
+    """3b. Plan each alert (planning agent or rules planner, then code checks). Critical drugs always
+    the same day; others share the daily cap."""
+
+    data = ctx.data
+    planned, others_used, waiting = [], 0, 0
+    for item in to_plan:
+        alert, existing, why = item["alert"], item["existing"], item["why"]
+        if alert["criticality"] != "critical":
+            if others_used >= ctx.max_plans:
+                waiting += 1
+                continue
+            others_used += 1
+        save = {"source_ref": f"stock_watch:{ctx.day.isoformat()}:{alert['din']}", "actor": "stock-watch",
+                "source_type": "stock_watch", "kind": alert["kind"],
+                "site_id": alert["sites"][0]["site_id"] if len(alert["sites"]) == 1 else None}
+        if ctx.pipeline is not None:
+            trigger = {"event": event_from_watch(alert).model_dump(), "save": save, "restore": True}
+            result = ctx.pipeline.signal(alert["din"], trigger, ctx.day)["result"]
+        else:
+            result = process_event(event_from_watch(alert), data=data, llm=ctx.llm, today=ctx.day,
+                                   planner=ctx.code_planner, restore=True)
+            save_pipeline_result(ctx.write_engine, result, event_id=existing, **save)
+        planned.append({"drug": alert["name"], "criticality": alert["criticality"],
+                        "sites": [s["site_id"] for s in alert["sites"]], "kind": alert["kind"],
+                        "why": why, "status": result["status"]})
+    return {"stock_watch": {"alerts": planned, "unchanged": unchanged, "waiting": waiting}}
+
+
+def step_reports(ctx: DayContext) -> dict:
+    """4. Health Canada shortage reports for tracked drugs."""
+
+    reports = run_shortage_signals(ctx.write_engine, ctx.data, llm=ctx.llm, today=ctx.day, planner=ctx.code_planner,
+                                   pipeline=ctx.pipeline)
+    reports.pop("saved", None)
+    return {"shortage_reports": reports}
+
+
+def step_followup(ctx: DayContext) -> dict:
+    """5. Follow up on approved transfers in the evening."""
+
+    now = datetime.combine(ctx.day, time(FOLLOWUP_HOUR))
+    if ctx.pipeline is None:
+        actions = run_followup(ctx.write_engine, ctx.data, now)
+        return {"followup": [{"transfer": a.request_id, "decision": a.decision} for a in actions]}
+
+    # Agentic pipeline: resume each drug's alert paused at follow-up. Alerts approved before the
+    # pipeline existed have no paused graph, so their transfers are followed up directly.
+    requests = approved_transfers(ctx.write_engine)
+    order = {r.request_id: i for i, r in enumerate(requests)}
+    checks: list[dict] = []
+    for din in dict.fromkeys(r.din for r in requests):
+        resumed = ctx.pipeline.tick(din, ctx.day, now)
+        if resumed is not None:
+            checks += resumed
+            continue
+        for plan_id in dict.fromkeys(r.plan_id for r in requests if r.din == din):
+            checks += [{"transfer": a.request_id, "decision": a.decision}
+                       for a in run_followup(ctx.write_engine, ctx.data, now, plan_id=plan_id)]
+    return {"followup": sorted(checks, key=lambda c: order.get(c["transfer"], len(order)))}
+
+
+def step_record(ctx: DayContext, summary: dict) -> dict:
+    """6. Count what waits for people and write the day's audit entry."""
+
+    with ctx.read_engine.connect() as conn:
+        waiting = conn.execute(text("SELECT count(*) FROM plan WHERE status = 'pending_approval'")).scalar_one()
+    summary = {**summary, "waiting_for_approval": waiting}
+    _record(ctx.write_engine, ctx.day, summary)
+    return summary
+
+
+def uses_graph(orchestrator: str | None = None) -> bool:
+    """Whether to run the LangGraph orchestration (default) or the classic code path."""
+
+    return (orchestrator or os.getenv("PIPELINE_ORCHESTRATOR", "graph")) == "graph"
+
+
+def summary_of(ctx: DayContext, parts: dict) -> dict:
+    """The day's summary, in the order the steps ran (the same shape whichever orchestrator ran them)."""
+
+    return {
+        "day": ctx.day.isoformat(),
+        "planner": "rules" if ctx.use_rules else "planning agent",
+        "ingested": parts["ingested"],
+        "emails": parts["emails"],
+        "stock_watch": parts["stock_watch"],
+        "shortage_reports": parts["shortage_reports"],
+        "followup": parts["followup"],
+    }
+
+
 def run_day(
     write_engine: Engine,
     read_engine: Engine,
@@ -215,93 +417,28 @@ def run_day(
     max_plans: int = MAX_PLANS_PER_DAY,
     inbox: dict[str, list[str]] | None = None,
     days_root: Path = PROGRESSION_DAYS,
+    orchestrator: str | None = None,
 ) -> dict:
-    """Run one simulated day. Returns a summary of what happened (also written to audit_log)."""
+    """Run one simulated day. Returns a summary of what happened (also written to audit_log).
 
-    has_model = model_available(llm)
-    use_rules = planner == "rules" or (planner == "auto" and not has_model)
-    code_planner = rules_planner if use_rules else None
-    inbox = load_inbox() if inbox is None else inbox
-    summary: dict = {"day": day.isoformat(), "planner": "rules" if use_rules else "planning agent"}
+    orchestrator: "graph" runs the steps as a LangGraph graph (the default), "classic" runs them in
+    plain Python order. Both call the same step functions. Default from PIPELINE_ORCHESTRATOR.
+    """
 
-    # 1. Ingest
-    folder = Path(days_root) / day.isoformat()
-    summary["ingested"] = load_folder(write_engine, folder)["rows_ok"] if folder.is_dir() else 0
+    ctx = DayContext(write_engine, read_engine, day, llm, planner, max_plans, inbox, days_root)
+    if uses_graph(orchestrator):
+        from services.agents.graph.daily import run_daily_graph
+        from services.agents.graph.pipeline import AgentPipeline
 
-    data = PostgresData(read_engine, as_of=day)
+        ctx.pipeline = AgentPipeline(write_engine, read_engine, llm, ctx.use_rules)
+        return run_daily_graph(ctx)
 
-    # 2. Inbox
-    emails = []
-    for name in inbox.get(day.isoformat(), []):
-        path = EMAILS / Path(name).name
-        source_ref = str(path.relative_to(ROOT))
-        if not path.is_file():
-            emails.append({"email": name, "status": "missing"})
-            continue
-        if open_event_for(write_engine, source_ref):
-            emails.append({"email": name, "status": "already open"})
-            continue
-        body = path.read_text(encoding="utf-8")
-        if not has_model and not inspect_supplier_email(body).suspicious:
-            emails.append({"email": name, "status": "waiting: reading emails needs the model"})
-            continue
-        result = process_email(body, data=data, llm=llm, today=day)
-        din = (result.get("assessment") or {}).get("drug_din")
-        existing = living_event(write_engine, din) if din else None
-        save_pipeline_result(write_engine, result, source_ref=source_ref, event_id=existing)
-        emails.append({"email": name, "status": result["status"] + (" (updated the drug's existing alert)" if existing else "")})
-    summary["emails"] = emails
-
-    # 3. Stock watch
-    previous = PostgresData(read_engine, as_of=day - timedelta(days=1))
-    to_plan, unchanged = [], 0
-    for alert in find_at_risk(data, previous, day):
-        existing = living_event(write_engine, alert["din"])
-        if existing is None:
-            to_plan.append((alert, None, "new"))
-            continue
-        reason = plan_needs_redo(write_engine, data, existing, alert)
-        if reason:
-            to_plan.append((alert, existing, reason))
-        else:
-            unchanged += 1
-
-    # Critical drugs are always planned the same day; others share the daily cap.
-    planned, others_used, waiting = [], 0, 0
-    for alert, existing, why in to_plan:
-        if alert["criticality"] != "critical":
-            if others_used >= max_plans:
-                waiting += 1
-                continue
-            others_used += 1
-        result = process_event(event_from_watch(alert), data=data, llm=llm, today=day, planner=code_planner,
-                               restore=True)
-        save_pipeline_result(
-            write_engine, result, source_ref=f"stock_watch:{day.isoformat()}:{alert['din']}", actor="stock-watch",
-            source_type="stock_watch", kind=alert["kind"],
-            site_id=alert["sites"][0]["site_id"] if len(alert["sites"]) == 1 else None,
-            event_id=existing,
-        )
-        planned.append({"drug": alert["name"], "criticality": alert["criticality"],
-                        "sites": [s["site_id"] for s in alert["sites"]], "kind": alert["kind"],
-                        "why": why, "status": result["status"]})
-    summary["stock_watch"] = {"alerts": planned, "unchanged": unchanged, "waiting": waiting}
-
-    # 4. Health Canada shortage reports
-    reports = run_shortage_signals(write_engine, data, llm=llm, today=day, planner=code_planner)
-    reports.pop("saved", None)
-    summary["shortage_reports"] = reports
-
-    # 5. Follow-up on approved transfers
-    actions = run_followup(write_engine, data, datetime.combine(day, time(FOLLOWUP_HOUR)))
-    summary["followup"] = [{"transfer": a.request_id, "decision": a.decision} for a in actions]
-
-    with read_engine.connect() as conn:
-        summary["waiting_for_approval"] = conn.execute(
-            text("SELECT count(*) FROM plan WHERE status = 'pending_approval'")).scalar_one()
-
-    _record(write_engine, day, summary)
-    return summary
+    parts = {**step_ingest(ctx), **step_inbox(ctx)}
+    detected = step_detect(ctx)
+    parts |= step_plan_alerts(ctx, detected["to_plan"], detected["unchanged"])
+    parts |= step_reports(ctx)
+    parts |= step_followup(ctx)
+    return step_record(ctx, summary_of(ctx, parts))
 
 
 def plan_for_drug(
@@ -313,6 +450,7 @@ def plan_for_drug(
     site_id: str | None = None,
     llm=None,
     planner: str = "auto",
+    orchestrator: str | None = None,
 ) -> dict:
     """A person (the supply manager) asks for a plan for one drug now, without waiting
     for an email or the stock watch. Same risk calculation, planner and checks.
@@ -345,13 +483,20 @@ def plan_for_drug(
         """), {"by": by, "din": din, "refs": [din],
                "detail": json.dumps({"drug": drug.name, "site": site_id, "day": as_of.isoformat(), "role": "supply_manager"})})
 
-    result = process_event(event_from_watch(alert, raised_by=f"Raised by {by}"), data=data, llm=llm, today=as_of,
-                           planner=rules_planner if use_rules else None, restore=True)
-    saved = save_pipeline_result(
-        write_engine, result, source_ref=f"manual:{as_of.isoformat()}:{din}",
-        actor="rules-planner" if use_rules else "planning-agent", source_type="manual", kind=alert["kind"],
-        site_id=site_id or (alert["sites"][0]["site_id"] if len(alert["sites"]) == 1 else None),
-    )
+    event = event_from_watch(alert, raised_by=f"Raised by {by}")
+    save = {"source_ref": f"manual:{as_of.isoformat()}:{din}", "actor": "rules-planner" if use_rules else "planning-agent",
+            "source_type": "manual", "kind": alert["kind"],
+            "site_id": site_id or (alert["sites"][0]["site_id"] if len(alert["sites"]) == 1 else None)}
+    if uses_graph(orchestrator):
+        from services.agents.graph.pipeline import AgentPipeline
+
+        final = AgentPipeline(write_engine, read_engine, llm, use_rules).signal(
+            din, {"event": event.model_dump(), "save": save, "restore": True, "join": False}, as_of)
+        result, saved = final["result"], {"event_id": final.get("alert_id"), "plan_id": final.get("plan_id")}
+    else:
+        result = process_event(event, data=data, llm=llm, today=as_of, planner=rules_planner if use_rules else None,
+                               restore=True)
+        saved = save_pipeline_result(write_engine, result, **save)
     return {"status": result["status"], "event_id": saved["event_id"], "plan_id": saved["plan_id"],
             "planner": "rules" if use_rules else "planning agent", "shortfall": result.get("shortfall", {})}
 
@@ -368,6 +513,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--day", type=date.fromisoformat, required=True)
     parser.add_argument("--planner", choices=["auto", "model", "rules"], default="auto")
     parser.add_argument("--max-plans", type=int, default=MAX_PLANS_PER_DAY)
+    parser.add_argument("--orchestrator", choices=["graph", "classic"], default=None,
+                        help="graph: LangGraph (default, or PIPELINE_ORCHESTRATOR); classic: plain Python order")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -377,7 +524,8 @@ def main(argv: list[str] | None = None) -> int:
 
     write = get_engine()
     read = create_engine(os.environ.get("DATABASE_URL_READONLY") or os.environ["DATABASE_URL"])
-    print(json.dumps(run_day(write, read, args.day, planner=args.planner, max_plans=args.max_plans), indent=2, default=str))
+    print(json.dumps(run_day(write, read, args.day, planner=args.planner, max_plans=args.max_plans,
+                                orchestrator=args.orchestrator), indent=2, default=str))
     return 0
 
 
