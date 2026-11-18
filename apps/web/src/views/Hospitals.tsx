@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { SupplyChart } from "../components/SupplyChart";
-import { Card, Empty, PageHead, Status, formatDays, type Tone } from "../components/ui";
+import { Card, Empty, Origin, PageHead, Status, formatDays, type Tone } from "../components/ui";
 import { SITES, dayLabel, drugById } from "../data/mock";
 import { responseFor } from "../lib/response";
 import { lineCoverage, tierFor, withApprovedPlans } from "../lib/risk";
@@ -228,7 +228,8 @@ function HospitalDetail({ h, go }: { h: ReturnType<typeof useHospitals>[number];
                             </Status>
                           )}
                         </td>
-                        <td>
+                        <td className="nowrap">
+                          {response.stage === "tracking" && <Origin by="human" compact />}{" "}
                           <Status tone={response.tone}>
                             {r.donor && response.stage === "decide" ? "Pending approval · gives stock" : response.label}
                             {response.detail ? ` · ${response.detail}` : ""}
@@ -295,9 +296,12 @@ function HospitalDetail({ h, go }: { h: ReturnType<typeof useHospitals>[number];
                           <span className="overdue"> overdue {Math.round(f.hoursOverdue!)} h</span>
                         ) : null}
                       </td>
-                      <td>
+                      <td className="nowrap">
                         {f.decision ? (
-                          <Status tone={FOLLOW_TONE[f.decision] ?? "neutral"}>{f.status.split(":")[0]}</Status>
+                          <>
+                            <Origin by={f.decidedBy === "agent" ? "agent" : "rules"} compact />{" "}
+                            <Status tone={FOLLOW_TONE[f.decision] ?? "neutral"}>{f.status.split(":")[0]}</Status>
+                          </>
                         ) : (
                           <span className="small muted">First check this evening</span>
                         )}

@@ -450,6 +450,8 @@ def followups(conn, names: dict[str, str], site_names: dict[str, str]) -> list[d
             "status": FOLLOWUP_STATUS.get(decision, decision) if decision else "Not checked yet: follow-up runs each evening",
             "confirmed": facts.get("units_confirmed"), "hoursOverdue": facts.get("hours_overdue"),
             "checkedAt": detail.get("at"),
+            # "agent" when the model chose; "rule" or "fallback" when code did.
+            "decidedBy": detail.get("decided_by"),
             "reason": detail.get("reason", ""),
         })
     return result

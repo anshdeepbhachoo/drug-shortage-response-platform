@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PAGE_TIPS, SHELL_TIPS, Tour } from "./components/Tour";
-import { SourceProvider } from "./components/ui";
+import { OriginLegend, SourceProvider } from "./components/ui";
 import { Welcome } from "./components/Welcome";
 import { USERS, timeLabel } from "./data/mock";
 import { DayControl } from "./components/LiveBar";
@@ -241,6 +241,12 @@ export function App() {
             </span>
             <span className="tour-label">Show me around</span>
           </button>
+          )}
+          {isLive && (
+            <div className="who">
+              <span className="label">Who did the work</span>
+              <OriginLegend />
+            </div>
           )}
           <div className="who">
             <span className="label">Viewing as</span>

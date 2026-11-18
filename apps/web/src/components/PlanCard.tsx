@@ -3,7 +3,7 @@ import { SITES, dayLabel, drugById, siteName, siteTag } from "../data/mock";
 import { AMBER_BELOW, applyPlan, coverageDays, evaluatePlan, tierFor } from "../lib/risk";
 import { useStore } from "../lib/store";
 import type { Plan, PlanStatus } from "../lib/types";
-import { Sources, Status, TIER_TONE, formatDays, type Tone } from "./ui";
+import { Origin, Sources, Status, TIER_TONE, formatDays, type Tone } from "./ui";
 
 export const PLAN_STATUS: Record<PlanStatus, { tone: Tone; text: string }> = {
   proposed: { tone: "neutral", text: "Option" },
@@ -96,7 +96,12 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
       <header className="plan-top">
         <span className="rank">#{plan.rank}</span>
         <div>
-          {state.live && <div className="label" style={{ marginBottom: 4 }}>{planSubject(drug.name, event)}</div>}
+          {state.live && (
+            <div className="row" style={{ gap: 6, marginBottom: 4 }}>
+              <Origin by={plan.explanation.startsWith("Rules planner") ? "rules" : "agent"} label={plan.explanation.startsWith("Rules planner") ? "Rules planner" : "Planning agent"} />
+              <span className="label">{planSubject(drug.name, event)}</span>
+            </div>
+          )}
           <h3>{title}</h3>
           {isSubstitute && (
             <div className="sub-callout">

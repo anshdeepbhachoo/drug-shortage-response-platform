@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { SITES, timeLabel } from "../data/mock";
 import { useStore } from "../lib/store";
-import { Card, ChartGuide, Change, Empty, InfoNotes, Meter, PageHead, SourceChip, Sources, Status } from "../components/ui";
+import { Card, ChartGuide, Change, Empty, InfoNotes, Meter, Origin, PageHead, SourceChip, Sources, Status } from "../components/ui";
 import { Icon, type IconName } from "../components/icons";
 import type { AuditEntry, Email, Site, SupplyEvent } from "../lib/types";
 
@@ -250,7 +250,14 @@ function Reader({ email, live }: { email: Email; live: boolean }) {
 
       <div className="reader-section">
         <h4>
-          <Icon name="sparkle" size={16} /> {live ? "Assessment agent extraction" : "What the AI understood"}
+          <Icon name="sparkle" size={16} />{" "}
+          {live ? (
+            <>
+              <Origin by="agent" label="Assessment agent" /> extraction
+            </>
+          ) : (
+            "What the AI understood"
+          )}
         </h4>
         {x.drug && x.drug !== "None identified" ? (
           <div className="read-out">

@@ -4,7 +4,7 @@ import { responseFor } from "../lib/response";
 import { lineCoverage, tierFor, withApprovedPlans } from "../lib/risk";
 import { useStore } from "../lib/store";
 import type { Tier } from "../lib/types";
-import { Status, formatDays } from "./ui";
+import { Origin, Status, formatDays } from "./ui";
 
 const AXIS_MAX = 60;
 const TICKS = [0, 7, 14, 30, 60];
@@ -170,10 +170,13 @@ export function SupplyChart({ site, onSite, focusDrug, focusKey }: {
                       const resp = responseFor(r.drugId, state.events, state.plans, state.live?.followups ?? []);
                       if (resp.stage === "none") return <span className="small muted">{r.tier === "green" ? "–" : "No alert"}</span>;
                       return (
+                        <>
+                        {resp.stage === "tracking" && <Origin by="human" compact />}{" "}
                         <Status tone={resp.tone}>
                           {resp.label}
                           {resp.detail ? ` · ${resp.detail}` : ""}
                         </Status>
+                        </>
                       );
                     })()}
                   </span>

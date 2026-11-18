@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { PlanCard } from "../components/PlanCard";
-import { Empty, PageHead, Status, formatDays, type Tone } from "../components/ui";
+import { Empty, Origin, PageHead, Status, formatDays, type OriginKind, type Tone } from "../components/ui";
 import { SITES, dayLabel, drugById, siteName } from "../data/mock";
 import { lineCoverage, tierFor } from "../lib/risk";
 import { currentOptions, stageOf, type Stage } from "../lib/response";
@@ -21,6 +21,13 @@ const SOURCE_WORD: Record<string, string> = {
   supplier_email: "Supplier notice",
   shortage_report: "Health Canada report",
   manual: "Requested by a person",
+};
+/** Who turned each signal into the alert: the assessment agent reads supplier notices; code raises the rest. */
+const SOURCE_ORIGIN: Record<string, OriginKind> = {
+  stock_watch: "rules",
+  supplier_email: "agent",
+  shortage_report: "rules",
+  manual: "human",
 };
 
 /** One alert per drug: where it bites, how urgent, and where its response stands. */
@@ -137,7 +144,7 @@ export function Alerts({ go, focusEvent }: { go: Go; focusEvent?: string | null 
 function AlertDetail({ a, go }: { a: ReturnType<typeof useAlerts>[number]; go: Go }) {
   const { state, live } = useStore();
   const drug = drugById(a.event.drugId);
-  const sources = [...new Set((a.event.evidence ?? []).map((e) => SOURCE_WORD[e.source] ?? e.source))];
+  const sources = [...new Set((a.event.evidence ?? []).map((e) => e.source))];
   const canPlan = state.role === "supply" && live.busy === null;
   // The simulated day the alert was first raised, from its source reference (e.g. "stock_watch:2026-11-15:…").
   const day = a.event.sourceRef.match(/\d{4}-\d{2}-\d{2}/)?.[0];
@@ -183,7 +190,12 @@ function AlertDetail({ a, go }: { a: ReturnType<typeof useAlerts>[number]; go: G
             </tbody>
           </table>
           <p className="small muted" style={{ marginTop: 10 }}>
-            Signals: {sources.join(" · ") || "stock watch"}.{" "}
+            Signals:{" "}
+            <span className="origins">
+              {(sources.length ? sources : ["stock_watch"]).map((src) => (
+                <Origin key={src} by={SOURCE_ORIGIN[src] ?? "rules"} label={SOURCE_WORD[src] ?? src} />
+              ))}
+            </span>{" "}
             <button className="link small" onClick={() => go("events", a.event.id)}>
               Review signals →
             </button>
@@ -215,6 +227,15 @@ function AlertDetail({ a, go }: { a: ReturnType<typeof useAlerts>[number]; go: G
           ) : (
             a.options.map((p) => <PlanCard key={p.id} plan={p} compact recommended={p.rank === 1 && p.status !== "approved"} />)
           )}
+          {a.stage === "tracking" && (() => {
+            const approved = a.options.find((p) => p.status === "approved");
+            const record = approved && state.audit.find((e) => e.action === "Approved" && e.refs.includes(approved.solverRun));
+            return record ? (
+              <p className="small ink-2">
+                Approved by <Origin by="human" label={record.actorName} /> · option {approved!.rank}
+              </p>
+            ) : null;
+          })()}
           {a.stage === "attention" && a.options.length > 0 && (
             <p className="small muted">No transfer passed the safety checks. The options above need a person: escalate, conserve, or an approved substitute.</p>
           )}
@@ -223,3 +244,4 @@ function AlertDetail({ a, go }: { a: ReturnType<typeof useAlerts>[number]; go: G
     </section>
   );
 }
+

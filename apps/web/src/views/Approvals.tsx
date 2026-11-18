@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { PlanCard } from "../components/PlanCard";
-import { Card, Empty, PageHead, Status } from "../components/ui";
+import { Card, Empty, Origin, PageHead, Status } from "../components/ui";
 import { USERS, drugById, siteName, timeLabel } from "../data/mock";
 import { useStore } from "../lib/store";
 import type { Plan } from "../lib/types";
@@ -147,7 +147,7 @@ function ApprovedBy({ plan }: { plan: Plan }) {
       <Status tone="good">Approved</Status>
       {record && (
         <>
-          {" "}by <b>{record.actorName}</b> · {timeLabel(record.atMin)}
+          {" "}by <Origin by="human" label={record.actorName} /> · {timeLabel(record.atMin)}
           {note && <> · “{note}”</>}
         </>
       )}

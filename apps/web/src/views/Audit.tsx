@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, ChartGuide, InfoNotes, PageHead, SourceChip, TierStatus, formatDays } from "../components/ui";
+import { Card, ChartGuide, InfoNotes, Origin, PageHead, SourceChip, TierStatus, formatDays } from "../components/ui";
 import { Icon, type IconName } from "../components/icons";
 import { DRUGS, SITES, dayLabel, drugById, siteName, timeLabel } from "../data/mock";
 import { lineCoverage, tierFor, withApprovedPlans } from "../lib/risk";
@@ -136,6 +136,7 @@ export function Audit() {
                     </span>
                     <div className="tl-body">
                       <div className="what">
+                        {state.live && <Origin by={isHuman(e.actor) ? "human" : e.actor === "agent" ? "agent" : "rules"} compact />}
                         <b>{who(e)}</b>
                         <span className="tl-action">{e.action}</span>
                         <span className="tl-object">{e.object}</span>
