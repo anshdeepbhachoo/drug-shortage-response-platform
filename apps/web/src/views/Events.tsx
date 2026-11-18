@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { SITES, timeLabel } from "../data/mock";
 import { useStore } from "../lib/store";
-import { Card, ChartGuide, Change, Empty, InfoNotes, Meter, Origin, PageHead, SourceChip, Sources, Status } from "../components/ui";
+import { Card, ChartGuide, Change, Empty, Meter, Origin, PageHead, SourceChip, Sources, Status } from "../components/ui";
+import { InfoNotes } from "../components/PageNotes";
+import "./signal-audit.css";
 import { Icon, type IconName } from "../components/icons";
 import type { AuditEntry, Email, Site, SupplyEvent } from "../lib/types";
 
@@ -78,7 +80,8 @@ export function Events({ openPlan }: { openPlan?: (eventId: string) => void } = 
   const event = email ? eventFor(email, state.events) : undefined;
 
   return (
-    <>
+    // `.sa-page` scopes this page's styles (views/signal-audit.css) so no other page changes.
+    <div className="sa-page">
       <PageHead
         label="Signal Review"
         title={state.live ? "Signal Review" : "What came in, and what the AI made of it"}
@@ -201,7 +204,7 @@ export function Events({ openPlan }: { openPlan?: (eventId: string) => void } = 
           </div>
         )}
       </Card>
-    </>
+    </div>
   );
 }
 

@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Card, ChartGuide, InfoNotes, Origin, PageHead, SourceChip, TierStatus, formatDays } from "../components/ui";
+import { Card, ChartGuide, Origin, PageHead, SourceChip, TierStatus, formatDays } from "../components/ui";
+import { InfoNotes } from "../components/PageNotes";
+import "./signal-audit.css";
 import { Icon, type IconName } from "../components/icons";
 import { DRUGS, SITES, dayLabel, drugById, siteName, timeLabel } from "../data/mock";
 import { lineCoverage, tierFor, withApprovedPlans } from "../lib/risk";
@@ -60,7 +62,8 @@ export function Audit() {
   const ai = state.audit.filter((a) => a.actor === "agent").length;
 
   return (
-    <>
+    // `.sa-page` scopes this page's styles (views/signal-audit.css) so no other page changes.
+    <div className="sa-page">
       <PageHead
         label="Audit Trail"
         title={state.live ? "Audit Trail" : "Everything that happened, in order"}
@@ -159,7 +162,7 @@ export function Audit() {
 
         <Trace />
       </div>
-    </>
+    </div>
   );
 }
 
