@@ -163,12 +163,12 @@ function FollowUpTile({ go }: { go: Go }) {
     <Tile
       title="Follow-up"
       value={all.length}
-      sub={all.length ? `approved transfers tracked · ${trouble} need attention` : "approved transfers tracked"}
+      sub={all.length ? `approved transfers and orders tracked · ${trouble} need attention` : "approved transfers and orders tracked"}
       tone={trouble ? "warn" : all.length ? "good" : "neutral"}
       onOpen={() => go("audit")}
     >
       <Rows
-        empty="Nothing approved yet. Approved transfers are checked every evening."
+        empty="Nothing approved yet. Approved transfers and orders are checked every evening."
         rows={all.slice(0, 4).map((f) => ({
           key: f.id,
           text: `${f.drug.split(" ")[0]}: ${f.from} → ${f.to}, ${f.units} units`,

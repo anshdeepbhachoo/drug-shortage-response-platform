@@ -13,7 +13,7 @@ Two graphs:
                                                                             └→ save (code) ─┬─ no checked option → END
                                                                                              └→ await_decision (human: graph pauses)
       await_decision ─┬─ approved → act ─┬─ transfer → follow_up
-                      │                  ├─ order    → order (orders agent: placeholder) → END
+                      │                  ├─ order    → order (order agent drafts the supplier request) → order_follow_up
                       │                  └─ other    → END
                       ├─ rejected → END
                       ├─ refused (stock changed) → gap        (replan on today's stock)
@@ -21,6 +21,9 @@ Two graphs:
       follow_up (follow-up agent: graph pauses until each evening) ─┬─ all closed → END
                                                                     ├─ replan → gap (without the failed donor)
                                                                     └─ otherwise → follow_up (next evening)
+      order_follow_up (order agent: pauses until each evening) ─┬─ all received → END
+                                                                ├─ replan → gap (without that supplier's order)
+                                                                └─ otherwise → order_follow_up (next evening)
 
 State is checkpointed in Postgres (migration 7c2e91d4b5a0), so an alert can wait days for approval or
 follow-up and resume exactly where it stopped. Engines, the model and the planner choice are passed at
@@ -35,7 +38,7 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any, TypedDict
 
 from langchain_core.runnables.graph import NodeStyles
@@ -61,6 +64,7 @@ from services.agents.agent import (
 from services.agents.db_data import PostgresData
 from services.agents.followup_db import run_followup
 from services.agents.followup_rules import exclude_failed_donor
+from services.agents.order_agent import draft_requests, resolve_model, run_order_followup
 from services.agents.results_store import save_pipeline_result
 from services.agents.rules_planner import rules_planner
 from services.agents.schemas import PlanOption, PlanSet, SupplyEvent
@@ -148,6 +152,9 @@ class AlertState(TypedDict, total=False):
     retried: bool
     retry: bool
     exclude_site: str | None
+    exclude_supplier: str | None  # a replan after an order failed: don't offer that supplier's order again
+    order_requests: list[str]     # orders the order agent drafted a supplier request for
+    last_checks: list[dict]       # the latest evening's follow-up checks (kept when a replan resets followup)
     replan: bool
     result: dict | None
     outcome: str
@@ -185,6 +192,12 @@ def _plan(state: AlertState, runtime: Runtime[Deps]) -> AlertState:
                             rules_planner if use_rules else None, state.get("feedback"))
     except MODEL_ERRORS as error:
         return {"plan": None, "result": _result("error", f"{type(error).__name__}: {error}", event.model_dump())}
+    if state.get("exclude_supplier"):
+        plan = PlanSet(options=[o for o in plan.options
+                                if not any(line.supplier_id == state["exclude_supplier"] for line in o.order_lines)]
+                       or [PlanOption(type="escalate", description="Escalate to a manager", moves=[],
+                                      reasoning=f"The order from {state['exclude_supplier']} failed and nothing else covers the gap.")],
+                       no_perfect_plan=plan.no_perfect_plan)
     if state.get("exclude_site"):
         # A replan after a donor failed: never offer that donor again.
         kept, _ = exclude_failed_donor(plan.options, state["exclude_site"])
@@ -222,7 +235,7 @@ def _await_decision(state: AlertState) -> AlertState:
     value = interrupt({"waiting_for": "decision", "alert_id": state.get("alert_id"), "plan_id": state.get("plan_id")})
     update: AlertState = {"decision": value}
     if value.get("type") == "signal":
-        update |= {"trigger": value["trigger"], "day": value["day"], "exclude_site": None}
+        update |= {"trigger": value["trigger"], "day": value["day"], "exclude_site": None, "exclude_supplier": None}
     elif value.get("type") == "refused":
         update |= {"day": value["day"]}
     return update
@@ -232,10 +245,44 @@ def _act(state: AlertState) -> AlertState:
     return {"outcome": f"approved_{state['decision'].get('option_type', 'option')}"}
 
 
-def _order(state: AlertState) -> AlertState:
-    """Placeholder for the orders agent: the order is approved but not placed yet."""
+def _model(deps: Deps):
+    """The model for agent steps, or None when the run is on rules (the agents then use their rule fallbacks)."""
 
-    return {"outcome": "order_approved_not_placed"}
+    return resolve_model(deps.llm, deps.use_rules)
+
+
+def _order(state: AlertState, runtime: Runtime[Deps]) -> AlertState:
+    """The order agent drafts the request to the supplier for the approved order (a person sends it)."""
+
+    deps = runtime.context
+    day = state["decision"].get("day") or state["day"]
+    drafts = draft_requests(deps.write_engine, deps.data(day), datetime.combine(date.fromisoformat(day), time(12)),
+                            _model(deps), plan_id=state["plan_id"])
+    return {"outcome": "order_approved", "followup": [], "replan": False,
+            "order_requests": [d["order_id"] for d in drafts]}
+
+
+def _order_follow_up(state: AlertState, runtime: Runtime[Deps]) -> AlertState:
+    """The order agent, once per evening. The graph stops here between checks."""
+
+    value = interrupt({"waiting_for": "order_follow_up", "alert_id": state.get("alert_id"), "plan_id": state.get("plan_id")})
+    if value.get("type") == "signal":
+        return {"decision": {"type": "signal"}, "trigger": value["trigger"], "day": value["day"],
+                "exclude_site": None, "exclude_supplier": None}
+
+    deps = runtime.context
+    actions = run_order_followup(deps.write_engine, deps.data(value["day"]), datetime.fromisoformat(value["now"]),
+                                 _model(deps), plan_id=state["plan_id"])
+    followup = [{"transfer": a.request_id, "decision": a.decision, "kind": "order"} for a in actions]
+    update: AlertState = {"followup": followup, "last_checks": followup, "day": value["day"], "decision": {"type": "tick"},
+                          "replan": False}
+    replanned = [a.request_id for a in actions if a.decision == "replan"]
+    if replanned:
+        with deps.read_engine.connect() as conn:
+            supplier = conn.execute(text("SELECT supplier_id FROM purchase_order WHERE order_id = :o"),
+                                    {"o": replanned[0]}).scalar_one()
+        update |= {"replan": True, "exclude_supplier": supplier, "trigger": {**state["trigger"], "restore": True}}
+    return update
 
 
 def _follow_up(state: AlertState, runtime: Runtime[Deps]) -> AlertState:
@@ -243,13 +290,15 @@ def _follow_up(state: AlertState, runtime: Runtime[Deps]) -> AlertState:
 
     value = interrupt({"waiting_for": "follow_up", "alert_id": state.get("alert_id"), "plan_id": state.get("plan_id")})
     if value.get("type") == "signal":
-        return {"decision": {"type": "signal"}, "trigger": value["trigger"], "day": value["day"], "exclude_site": None}
+        return {"decision": {"type": "signal"}, "trigger": value["trigger"], "day": value["day"], "exclude_site": None,
+                "exclude_supplier": None}
 
     deps = runtime.context
     actions = run_followup(deps.write_engine, deps.data(value["day"]), datetime.fromisoformat(value["now"]),
                            plan_id=state["plan_id"])
     followup = [{"transfer": a.request_id, "decision": a.decision} for a in actions]
-    update: AlertState = {"followup": followup, "day": value["day"], "decision": {"type": "tick"}, "replan": False}
+    update: AlertState = {"followup": followup, "last_checks": followup, "day": value["day"], "decision": {"type": "tick"},
+                          "replan": False}
     replanned = [a.request_id for a in actions if a.decision == "replan"]
     if replanned:
         with deps.read_engine.connect() as conn:
@@ -297,10 +346,20 @@ def _after_follow_up(state: AlertState) -> str:
     return "follow_up"
 
 
+def _after_order_follow_up(state: AlertState) -> str:
+    if state["decision"].get("type") == "signal" or state.get("replan"):
+        return "gap"
+    decisions = [f["decision"] for f in state.get("followup", [])]
+    if decisions and all(d == "close" for d in decisions):
+        return END
+    return "order_follow_up"
+
+
 def build_alert_graph(checkpointer=None):
     graph = StateGraph(AlertState, context_schema=Deps)
     for name, node in [("gap", _gap), ("plan", _plan), ("check", _check), ("save", _save),
-                       ("await_decision", _await_decision), ("act", _act), ("order", _order), ("follow_up", _follow_up)]:
+                       ("await_decision", _await_decision), ("act", _act), ("order", _order), ("follow_up", _follow_up),
+                       ("order_follow_up", _order_follow_up)]:
         graph.add_node(name, node)
     graph.add_edge(START, "gap")
     graph.add_conditional_edges("gap", _after_gap, ["plan", "save"])
@@ -309,7 +368,8 @@ def build_alert_graph(checkpointer=None):
     graph.add_conditional_edges("save", _after_save, ["await_decision", END])
     graph.add_conditional_edges("await_decision", _after_decision, ["act", "gap", END])
     graph.add_conditional_edges("act", _after_act, ["follow_up", "order", END])
-    graph.add_edge("order", END)
+    graph.add_edge("order", "order_follow_up")
+    graph.add_conditional_edges("order_follow_up", _after_order_follow_up, ["gap", "order_follow_up", END])
     graph.add_conditional_edges("follow_up", _after_follow_up, ["gap", "follow_up", END])
     return graph.compile(checkpointer=checkpointer)
 
@@ -336,7 +396,8 @@ class AgentPipeline:
         return build_intake_graph().invoke({"email": email, "day": day.isoformat()}, context=self.deps)
 
     def paused(self, din: str) -> dict | None:
-        """What the drug's alert is paused on ({"waiting_for": "decision" | "follow_up", "plan_id", ...}), or None."""
+        """What the drug's alert is paused on ({"waiting_for": "decision" | "follow_up" | "order_follow_up", "plan_id",
+        ...}), or None."""
 
         with self._graph() as graph:
             snapshot = graph.get_state(thread(din))
@@ -358,7 +419,7 @@ class AgentPipeline:
                 graph.invoke(Command(resume={"type": "signal", "trigger": trigger, "day": day.isoformat()}), config,
                              context=self.deps)
             else:
-                graph.invoke({**FRESH, "din": din, "day": day.isoformat(), "trigger": trigger, "exclude_site": None,
+                graph.invoke({**FRESH, "din": din, "day": day.isoformat(), "trigger": trigger, "exclude_site": None, "exclude_supplier": None,
                               "alert_id": None, "plan_id": None, "outcome": ""}, config, context=self.deps)
             return graph.get_state(config).values
 
@@ -376,12 +437,12 @@ class AgentPipeline:
     def tick(self, din: str, day: date, now: datetime) -> list[dict] | None:
         """Evening follow-up for one alert. Returns its follow-up actions, or None when it isn't waiting."""
 
-        if self.waiting_for(din) != "follow_up":
+        if self.waiting_for(din) not in ("follow_up", "order_follow_up"):
             return None
         with self._graph() as graph:
             graph.invoke(Command(resume={"type": "tick", "day": day.isoformat(), "now": now.isoformat()}), thread(din),
                          context=self.deps)
-            return graph.get_state(thread(din)).values.get("followup", [])
+            return graph.get_state(thread(din)).values.get("last_checks", [])
 
 
 # ---------------------------------------------------------

@@ -468,7 +468,7 @@ def followups(conn, names: dict[str, str], site_names: dict[str, str]) -> list[d
         facts = detail.get("facts") or {}
         decision = check["action"].removeprefix("Follow-up: ") if check else None
         result.append({
-            "id": m["action_id"], "drugId": m["din"], "drug": names.get(m["din"], m["din"]),
+            "id": m["action_id"], "kind": "transfer", "drugId": m["din"], "drug": names.get(m["din"], m["din"]),
             "from": site_names.get(m["from_site"], m["from_site"]), "to": site_names.get(m["to_site"], m["to_site"]),
             "units": m["units"], "approvedAt": m["decided_at"].isoformat(),
             # When the follow-up agent expects the transfer to have arrived (same deadline it checks against).
@@ -480,6 +480,45 @@ def followups(conn, names: dict[str, str], site_names: dict[str, str]) -> list[d
             # "agent" when the model chose; "rule" or "fallback" when code did.
             "decidedBy": detail.get("decided_by"),
             "reason": detail.get("reason", ""),
+        })
+    return result + order_followups(conn, names, site_names)
+
+
+ORDER_STATUS_WORD = {"approved": "Approved, not placed yet", "placed": "Placed with the supplier", "in_transit": "In transit",
+                     "delayed": "Delayed by the supplier", "delivered": "Received", "cancelled": "Cancelled"}
+
+
+def order_followups(conn, names: dict[str, str], site_names: dict[str, str]) -> list[dict]:
+    """Every approved purchase order, with the order agent's request draft and latest check in plain words."""
+
+    orders = _rows(conn, """
+        SELECT o.order_id, o.din, o.site_id, o.qty, o.status, o.expected_date, s.name AS supplier, d.decided_at
+        FROM purchase_order o JOIN supplier s USING (supplier_id)
+        JOIN decision d ON d.plan_id = o.plan_id AND d.decision = 'approved'
+        WHERE o.plan_id IS NOT NULL
+        ORDER BY d.decided_at DESC, o.order_id""")
+    records: dict[str, list[dict]] = {}
+    for r in _rows(conn, "SELECT object, action, detail FROM audit_log WHERE actor = 'order-agent' ORDER BY audit_id"):
+        records.setdefault(r["object"], []).append(r)
+    result = []
+    for o in orders:
+        mine = records.get(o["order_id"], [])
+        request = next((r["detail"] for r in mine if r["action"] == "Order request drafted"), None)
+        check = next((r for r in reversed(mine) if r["action"].startswith("Order follow-up: ")), None)
+        detail = (check or {}).get("detail") or {}
+        decision = check["action"].removeprefix("Order follow-up: ") if check else None
+        result.append({
+            "id": o["order_id"], "kind": "order", "drugId": o["din"], "drug": names.get(o["din"], o["din"]),
+            "from": o["supplier"], "to": site_names.get(o["site_id"], o["site_id"]), "units": o["qty"],
+            "approvedAt": o["decided_at"].isoformat(),
+            "expectedBy": datetime.combine(o["expected_date"], time(23, 59)).isoformat(),
+            "orderStatus": o["status"], "orderStatusText": ORDER_STATUS_WORD.get(o["status"], o["status"]),
+            "decision": decision,
+            "status": FOLLOWUP_STATUS.get(decision, decision) if decision else "Not checked yet: follow-up runs each evening",
+            "checkedAt": detail.get("at"), "decidedBy": detail.get("decided_by"), "reason": detail.get("reason", ""),
+            "messageTo": detail.get("message_to"), "messageDraft": detail.get("message_draft"),
+            "request": {"to": request["message_to"], "subject": request["subject"], "body": request["message_draft"],
+                        "decidedBy": request["decided_by"]} if request else None,
         })
     return result
 
