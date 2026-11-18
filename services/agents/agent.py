@@ -16,7 +16,7 @@ from services.agents.data_source import default_data
 from services.agents.model_io import LLM, extract_json, serialize
 from services.agents.planning import PLANNING_SYSTEM_PROMPT
 from services.agents.risk import calculate_site_risk, cover_days_by_site
-from services.agents.schemas import PlanSet, SupplyEvent
+from services.agents.schemas import PlanOption, PlanSet, SupplyEvent
 from services.agents.security import inspect_supplier_email
 from services.agents.tools import build_tool_registries
 
@@ -517,6 +517,84 @@ def _pipeline(email: str, data, llm: LLM | None, today: date):
     return _plan_for_event(event, assessment, data, llm, today, planning_registry)
 
 
+# ---------------------------------------------------------
+# Planning, in steps. _plan_for_event runs them in order; the LangGraph
+# agentic pipeline (services/agents/graph/pipeline.py) runs each as a node,
+# with the retry as a loop.
+# ---------------------------------------------------------
+
+def gap_for_event(event, assessment, data, today, restore=False) -> dict:
+    """Code: which sites will run short and by how much. Returns {"ok": True, ...gap} or
+    {"ok": False, "result": <a final _result>} when there is nothing to plan."""
+
+    if data.drug(event.drug_din) is None:
+        return {"ok": False, "result": _result("needs_review", f"DIN {event.drug_din} is not in the drug catalogue.", assessment)}
+    stock_rows = data.stock(event.drug_din)
+    if not stock_rows:
+        return {"ok": False, "result": _result("needs_review", f"No inventory records found for DIN {event.drug_din}.", assessment)}
+
+    delay_days = math.ceil(event.delay_weeks * 7)
+    cover_days = cover_days_by_site(stock_rows, data.orders(event.drug_din), delay_days, today, restore=restore)
+    risk_sites, shortfall = calculate_site_risk(stock_rows, cover_days)
+    if not risk_sites:
+        return {"ok": False, "result": _result("no_shortage_detected", "Current inventory covers the estimated delay.",
+                                               assessment, delay_days=delay_days, cover_days=cover_days)}
+    return {"ok": True, "delay_days": delay_days, "cover_days": cover_days, "risk_sites": risk_sites, "shortfall": shortfall}
+
+
+def propose_plan(event, gap: dict, data, llm, planning_registry, planner=None, feedback=None) -> PlanSet:
+    """Agent (or the rules planner): up to three options for the gap."""
+
+    if planner is not None:
+        return planner(event=event, stock_rows=data.stock(event.drug_din), data=data, delay_days=gap["delay_days"],
+                       cover_days=gap["cover_days"], risk_sites=gap["risk_sites"], shortfall=gap["shortfall"])
+    return plan_response(event, gap["delay_days"], gap["cover_days"], gap["risk_sites"], gap["shortfall"],
+                         planning_registry, feedback, llm=llm)
+
+
+def check_plan(event, gap: dict, plan: PlanSet, data) -> tuple[list[PlanOption], dict]:
+    """Code: every option a person could choose is checked; failures are never offered."""
+
+    stock = {row["site_id"]: {"on_hand": row["on_hand"], "daily_use": row["daily_use"]} for row in data.stock(event.drug_din)}
+    approved_substitutes = {
+        str(record["substitute_din"]) for record in data.substitutions(event.drug_din)
+        if str(record.get("approved", "")).lower() in {"yes", "true", "1"}
+    }
+    return check_options(options=plan.options, stock=stock, shortfall=gap["shortfall"], reserve_days=gap["cover_days"],
+                         drug_din=event.drug_din, approved_substitutes=approved_substitutes)
+
+
+def retry_feedback(plan: PlanSet, verified: list[PlanOption], rejected: dict, attempt: int) -> str | None:
+    """Code: the checker's reasons to send back to the planner, or None to stop. Retries once, and only
+    when no transfer survived the checks."""
+
+    if any(option.type == "transfer" for option in verified) or attempt >= 2:
+        return None
+    feedback = "\n".join(
+        f"- Option {index + 1} ({plan.options[index].description}): " + "; ".join(problems)
+        for index, problems in rejected.items()
+        if plan.options[index].type == "transfer"
+    )
+    return feedback or None
+
+
+def plan_result(event, assessment, gap: dict, plan: PlanSet, verified: list[PlanOption], rejected: dict, retried: bool) -> dict:
+    return _result(
+        "plan_generated" if verified else "no_verified_plan",
+        event.reason,
+        assessment,
+        delay_days=gap["delay_days"],
+        cover_days=gap["cover_days"],
+        risk_sites=gap["risk_sites"],
+        shortfall=gap["shortfall"],
+        proposed_options=[o.model_dump() for o in plan.options],
+        verified_options=[o.model_dump() for o in verified],
+        rejected_options=rejected,
+        no_perfect_plan=plan.no_perfect_plan,
+        retried_after_rejection=retried,
+    )
+
+
 def _plan_for_event(event, assessment, data, llm, today, planning_registry, planner=None, restore=False):
     """Risk calculation -> planning agent -> transfer checks, for an accepted supply event.
 
@@ -528,105 +606,20 @@ def _plan_for_event(event, assessment, data, llm, today, planning_registry, plan
     cover (see risk.cover_days_by_site).
     """
 
-    if data.drug(event.drug_din) is None:
-        return _result(
-            "needs_review",
-            f"DIN {event.drug_din} is not in the drug catalogue.",
-            assessment,
-        )
+    gap = gap_for_event(event, assessment, data, today, restore=restore)
+    if not gap["ok"]:
+        return gap["result"]
 
-    stock_rows = data.stock(event.drug_din)
-
-    if not stock_rows:
-        return _result(
-            "needs_review",
-            f"No inventory records found for DIN {event.drug_din}.",
-            assessment,
-        )
-
-    delay_days = math.ceil(event.delay_weeks * 7)
-
-    cover_days = cover_days_by_site(
-        stock_rows, data.orders(event.drug_din), delay_days, today, restore=restore
-    )
-
-    risk_sites, shortfall = calculate_site_risk(stock_rows, cover_days)
-
-    if not risk_sites:
-        return _result(
-            "no_shortage_detected",
-            "Current inventory covers the estimated delay.",
-            assessment,
-            delay_days=delay_days,
-            cover_days=cover_days,
-        )
-
-    current_stock = {
-        row["site_id"]: {"on_hand": row["on_hand"], "daily_use": row["daily_use"]}
-        for row in stock_rows
-    }
-
-    approved_substitutes = {
-        str(record["substitute_din"]) for record in data.substitutions(event.drug_din)
-        if str(record.get("approved", "")).lower() in {"yes", "true", "1"}
-    }
-    feedback = None
-
-    for attempt in range(2):
-        if planner is not None:
-            plan = planner(event=event, stock_rows=stock_rows, data=data, delay_days=delay_days,
-                           cover_days=cover_days, risk_sites=risk_sites, shortfall=shortfall)
-        else:
-            plan = plan_response(
-                event,
-                delay_days,
-                cover_days,
-                risk_sites,
-                shortfall,
-                planning_registry,
-                feedback,
-                llm=llm,
-            )
-
-        # Every option a person could choose is checked; failures are never offered.
-        verified, rejected = check_options(
-            options=plan.options,
-            stock=current_stock,
-            shortfall=shortfall,
-            reserve_days=cover_days,
-            drug_din=event.drug_din,
-            approved_substitutes=approved_substitutes,
-        )
-
-        # Ask the planner again only when no transfer survived the checks.
-        if any(option.type == "transfer" for option in verified) or attempt == 1:
+    feedback, retried = None, False
+    for attempt in (1, 2):
+        plan = propose_plan(event, gap, data, llm, planning_registry, planner, feedback)
+        verified, rejected = check_plan(event, gap, plan, data)
+        next_feedback = retry_feedback(plan, verified, rejected, attempt)
+        if next_feedback is None:
             break
+        feedback, retried = next_feedback, True
 
-        # Give the planner the checker's reasons for transfer options only.
-        feedback = "\n".join(
-            f"- Option {index + 1} ({plan.options[index].description}): "
-            + "; ".join(problems)
-            for index, problems in rejected.items()
-            if plan.options[index].type == "transfer"
-        )
-
-        if not feedback:
-            break
-
-    return _result(
-        "plan_generated" if verified else "no_verified_plan",
-        event.reason,
-        assessment,
-        delay_days=delay_days,
-        cover_days=cover_days,
-        risk_sites=risk_sites,
-        shortfall=shortfall,
-        proposed_options=[o.model_dump() for o in plan.options],
-        verified_options=[o.model_dump() for o in verified],
-        rejected_options=rejected,
-        no_perfect_plan=plan.no_perfect_plan,
-        retried_after_rejection=bool(feedback),
-    )
+    return plan_result(event, assessment, gap, plan, verified, rejected, retried)
 
 
 def process_email(email: str, data=None, llm: LLM | None = None, today: date | None = None):

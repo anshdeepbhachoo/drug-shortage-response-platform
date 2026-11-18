@@ -10,6 +10,7 @@ with DATABASE_URL, so every rule (roles, re-checks, audit) still applies.
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import date, datetime, time, timezone
 from pathlib import Path
@@ -17,15 +18,18 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from apps.api.state import EMAILS, build_state
 from services.agents.approvals import ALL_ROLES, ApprovalError, approve_plan, reject_plan
+from services.agents.daily_run import model_available, uses_graph
 from services.agents.db_data import PostgresData
 
 # The UI's people and the approval roles they hold.
+logger = logging.getLogger(__name__)
+
 UI_ROLES = {"supply": "supply_manager", "pharmacist": "pharmacist", "procurement": "procurement"}
 
 
@@ -102,6 +106,22 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
     def email_files():
         return sorted(path.name for path in EMAILS.glob("*.txt"))
 
+    def resume_pipeline(plan_id: str, decision: dict) -> None:
+        """Hand a person's decision to the agentic pipeline, which is paused waiting for it. The decision
+        itself is already recorded; if resuming fails, the approval still stands and is logged."""
+
+        if not uses_graph():
+            return
+        from services.agents.graph.pipeline import AgentPipeline
+
+        try:
+            with read_engine.connect() as conn:
+                din = conn.execute(text("SELECT e.din FROM plan p JOIN supply_event e USING (event_id) WHERE p.plan_id = :p"),
+                                   {"p": plan_id}).scalar_one()
+            AgentPipeline(write_engine, read_engine, llm, use_rules=not model_available(llm)).decide(din, plan_id, decision)
+        except Exception:
+            logger.exception("Could not resume the agent pipeline for %s", plan_id)
+
     @app.post("/api/plans/{card_id}/approve")
     def approve(card_id: str, body: Decision):
         plan_id, option = _split_card_id(card_id)
@@ -109,19 +129,27 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
         try:
             # With a stock day, the decision is timed on the simulated clock (noon that day).
             at = datetime.combine(body.as_of, time(12)) if body.as_of else None
-            return guard(lambda: approve_plan(write_engine, plan_id, body.by, _role(body.role), data,
-                                              body.option or option, body.note, at=at))
+            result = guard(lambda: approve_plan(write_engine, plan_id, body.by, _role(body.role), data,
+                                                body.option or option, body.note, at=at))
         except ApprovalError as error:
             raise HTTPException(409, str(error))
+        day = (body.as_of or date.today()).isoformat()
+        if result.get("approved"):
+            resume_pipeline(plan_id, {"type": "approved", "option": result["option"], "option_type": result["type"], "day": day})
+        else:  # the stock re-check refused it: the pipeline replans on today's stock
+            resume_pipeline(plan_id, {"type": "refused", "day": day})
+        return result
 
     @app.post("/api/plans/{card_id}/reject")
     def reject(card_id: str, body: Decision):
         plan_id, _ = _split_card_id(card_id)
         try:
             at = datetime.combine(body.as_of, time(12)) if body.as_of else None
-            return guard(lambda: reject_plan(write_engine, plan_id, body.by, _role(body.role), body.note or "", at=at))
+            result = guard(lambda: reject_plan(write_engine, plan_id, body.by, _role(body.role), body.note or "", at=at))
         except ApprovalError as error:
             raise HTTPException(409, str(error))
+        resume_pipeline(plan_id, {"type": "rejected"})
+        return result
 
     @app.post("/api/agent/run")
     def run_agent_on_email(body: RunEmail):
