@@ -61,6 +61,26 @@ Run: `python -m services.agents.agent mock/emails/clear.txt`
 
 Data: `mock/followup/transfer_requests.csv`, `mock/followup/replies.json`. Tests: `tests/test_followup.py`.
 
+### Orders
+
+| File | Purpose |
+|---|---|
+| `orders.py` | The order option in a plan: supplier, quantity and arrival worked out and checked in code (`order_option`, `check_order`). |
+| `order_agent.py` | `OrderAgent`: drafts the request to the supplier after approval, then checks every approved order each evening (wait / nudge / escalate / replan / close). Reads supplier replies first; people record placed / received (`record_order_status`). |
+| `order_replies.py` | Supplier replies: the reader prompt, `check_order_reading` (confidence ≥ 0.7, units ≤ ordered, real dates) and the synthetic replies loader. |
+
+Each reply is screened by `security.py`, read by the reader agent (or its scripted `offline_reading` without a model), checked in code, then acted on:
+
+| Reply | What the order agent does |
+|---|---|
+| confirmed | Counts as placed (no nudge to procurement); the supplier's date becomes the expected date on the purchase order |
+| delayed | New expected date; if the hospital runs out first, the existing hard rule replans (or escalates when stock is too short) |
+| partial | Escalates: a person decides how to cover the missing units (a replan would re-order the whole gap) |
+| backordered / cancelled | Replans without that supplier, or escalates when stock is too short |
+| question, flagged, unreadable, failed checks | Escalates for a person |
+
+Data: `mock/orders/order_replies.json`. Replies are timed from the order's approval and filled in from the order. `ORDER_REPLY_STORY` picks the story (`mixed` by default, `supply_problems`, or `none`). Tests: `tests/test_orders.py`, `tests/test_order_agent.py`, `tests/test_order_replies.py`.
+
 ---
 
 ## Setup

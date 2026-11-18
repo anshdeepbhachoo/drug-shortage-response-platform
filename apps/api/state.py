@@ -507,6 +507,10 @@ def order_followups(conn, names: dict[str, str], site_names: dict[str, str]) -> 
         check = next((r for r in reversed(mine) if r["action"].startswith("Order follow-up: ")), None)
         detail = (check or {}).get("detail") or {}
         decision = check["action"].removeprefix("Order follow-up: ") if check else None
+        replies = [{"from": e["sender"], "receivedAt": e["received_at"], "text": e["text"],
+                    "kind": (e.get("reading") or {}).get("kind"), "summary": (e.get("reading") or {}).get("summary"),
+                    "readBy": e.get("read_by"), "problems": e.get("problems") or []}
+                   for r in mine if r["action"].startswith("Order follow-up: ") for e in r["detail"].get("replies") or []]
         result.append({
             "id": o["order_id"], "kind": "order", "drugId": o["din"], "drug": names.get(o["din"], o["din"]),
             "from": o["supplier"], "to": site_names.get(o["site_id"], o["site_id"]), "units": o["qty"],
@@ -517,6 +521,7 @@ def order_followups(conn, names: dict[str, str], site_names: dict[str, str]) -> 
             "status": FOLLOWUP_STATUS.get(decision, decision) if decision else "Not checked yet: follow-up runs each evening",
             "checkedAt": detail.get("at"), "decidedBy": detail.get("decided_by"), "reason": detail.get("reason", ""),
             "messageTo": detail.get("message_to"), "messageDraft": detail.get("message_draft"),
+            "replies": replies,
             "request": {"to": request["message_to"], "subject": request["subject"], "body": request["message_draft"],
                         "decidedBy": request["decided_by"]} if request else None,
         })

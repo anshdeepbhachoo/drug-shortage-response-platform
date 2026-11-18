@@ -26,6 +26,13 @@ from services.agents.order_agent import (
 SNAPSHOT = datetime(2026, 11, 15)
 
 
+@pytest.fixture(autouse=True)
+def no_supplier_replies(monkeypatch):
+    """These tests follow orders that suppliers never answer (supplier replies: tests/test_order_replies.py)."""
+
+    monkeypatch.setenv("ORDER_REPLY_STORY", "none")
+
+
 class Data:
     """Central General (A) has 60 units and uses 5 a day: 12 days."""
 

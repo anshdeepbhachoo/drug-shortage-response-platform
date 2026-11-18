@@ -46,6 +46,21 @@ export interface FollowUp {
   messageDraft?: string | null;
   /** The order agent's request to the supplier, for a person to send. */
   request?: { to: string; subject: string; body: string; decidedBy: "agent" | "rule" } | null;
+  /** Orders only: supplier replies the order agent has read, oldest first. */
+  replies?: SupplierReply[];
+}
+
+export interface SupplierReply {
+  from: string;
+  receivedAt: string;
+  /** Untrusted supplier text, shown as is. */
+  text: string;
+  /** What the reader extracted, after code checks; null when the reply was flagged or could not be read. */
+  kind: "confirmed" | "partial" | "delayed" | "backordered" | "cancelled" | "question" | "unrelated" | null;
+  summary: string | null;
+  readBy?: "agent" | "rule" | null;
+  /** Why a person must read it: security screen, failed checks. Empty when the reading was accepted. */
+  problems: string[];
 }
 
 export interface DaySummary {

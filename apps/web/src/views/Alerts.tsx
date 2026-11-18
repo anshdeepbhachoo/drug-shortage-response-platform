@@ -256,6 +256,17 @@ function AlertDetail({ a, go }: { a: ReturnType<typeof useAlerts>[number]; go: G
 const ORDER_TONE: Record<string, Tone> = { approved: "warn", placed: "good", in_transit: "good", delayed: "warn", delivered: "good", cancelled: "crit" };
 const CHECK_TONE: Record<string, Tone> = { wait: "good", close: "good", nudge: "warn", escalate: "crit", replan: "crit" };
 
+const REPLY_WORD: Record<string, string> = {
+  confirmed: "Confirmed",
+  partial: "Partial",
+  delayed: "Delayed",
+  backordered: "Backordered",
+  cancelled: "Cancelled",
+  question: "Question",
+  unrelated: "Unrelated",
+};
+const REPLY_TONE: Record<string, Tone> = { confirmed: "good", partial: "warn", delayed: "warn", backordered: "crit", cancelled: "crit", question: "warn" };
+
 /** An approved order: where it stands, the order agent's latest check and its request to the supplier.
  * Procurement (or the supply manager) records what happened; nothing is sent from here. */
 function OrderTracking({ order: o }: { order: FollowUp }) {
@@ -289,6 +300,25 @@ function OrderTracking({ order: o }: { order: FollowUp }) {
           <p className="small ink-2" style={{ whiteSpace: "pre-wrap" }}>{o.messageDraft}</p>
         </details>
       )}
+      {(o.replies ?? []).map((r, i) => (
+        <details key={i}>
+          <summary className="small">
+            {r.problems.length ? (
+              <Status tone="crit">Needs a person</Status>
+            ) : (
+              <>
+                <Origin by={r.readBy === "agent" ? "agent" : "rules"} label={r.readBy === "agent" ? "Order agent" : "Scripted reading"} compact />{" "}
+                <Status tone={REPLY_TONE[r.kind ?? ""] ?? "neutral"}>{REPLY_WORD[r.kind ?? ""] ?? r.kind}</Status>
+              </>
+            )}{" "}
+            Reply from {r.from}: {r.problems.length ? r.problems.join("; ") : r.summary}
+          </summary>
+          <p className="small ink-2" style={{ whiteSpace: "pre-wrap" }}>{r.text}</p>
+          <p className="small muted">
+            Received {new Date(r.receivedAt).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}. Supplier text is untrusted; code checked the reading before the order agent used it.
+          </p>
+        </details>
+      ))}
       {o.request && (
         <details>
           <summary className="small">
