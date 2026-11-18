@@ -49,12 +49,142 @@ Takes a hospital network from a drug shortage signal to an approved, auditable r
 - **Every plan option is checked in code** before anyone sees it: transfers keep donors above their 14-day floor, substitutes must come from the approved table. Options that fail are never offered.
 - **Approval:** each plan is one decision. Choose one option, or reject the plan with a reason. The supply manager can choose any option except a substitution, which needs a pharmacist.
 
+## Orchestration (LangGraph)
+
+The agentic part of the platform is its own pipeline, built with [LangGraph](https://langchain-ai.github.io/langgraph/) in `services/agents/graph/pipeline.py`. Everything an agent or a person decides happens inside it. The rest of the application (ingestion, the daily schedule, stock-watch detection, the database, the API and the UI) only starts it with a signal and resumes it when something happens.
+
+### Alert lifecycle: one graph per drug
+
+Each drug's alert runs in its own graph (thread `alert:<DIN>`), from the first signal to resolution. Its state is saved in Postgres, so an alert can wait days for a decision and resume exactly where it stopped.
+
+```mermaid
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	gap(gap)
+	plan(plan)
+	check(check)
+	save(save)
+	await_decision(await_decision)
+	act(act)
+	order(order)
+	follow_up(follow_up)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> gap;
+	act -.-> __end__;
+	act -.-> follow_up;
+	act -.-> order;
+	await_decision -.-> __end__;
+	await_decision -.-> act;
+	await_decision -.-> gap;
+	check -.-> plan;
+	check -.-> save;
+	follow_up -.-> __end__;
+	follow_up -.-> gap;
+	gap -.-> plan;
+	gap -.-> save;
+	plan -.-> check;
+	plan -.-> save;
+	save -.-> __end__;
+	save -.-> await_decision;
+	order --> __end__;
+	follow_up -.-> follow_up;
+	classDef default fill:#e8f1fb,stroke:#0b5cad,stroke-width:1px,color:#1c2330,line-height:1.2
+	classDef first fill:#ffffff,stroke:#5b6575,color:#1c2330
+	classDef last fill:#ffffff,stroke:#5b6575,color:#1c2330
+```
+
+| Node | Who | What it does |
+|---|---|---|
+| `gap` | Code | Which hospitals run short and by how much |
+| `plan` | Agent | Planning agent (or rules planner) proposes up to three options |
+| `check` | Code | Safety checks on every option; loops back to `plan` once with the reasons if no transfer passed |
+| `save` | Code | Saves the alert and plan; continues only if an option passed |
+| `await_decision` | Human | **The graph pauses.** Approve resumes it; a refused approval or new evidence loops back to `gap` |
+| `act` | Code | Routes the approved option: transfer → follow-up, order → orders agent |
+| `order` | Agent | Orders agent (placeholder: the order is approved but not placed yet) |
+| `follow_up` | Agent | **Pauses until each evening**, then checks the transfer; loops until done, or back to `gap` to replan without the hospital that failed |
+
+### Intake: one graph per supplier notice
+
+```mermaid
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	screen(screen)
+	assess(assess)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> screen;
+	screen -.-> __end__;
+	screen -.-> assess;
+	assess --> __end__;
+	classDef default fill:#e8f1fb,stroke:#0b5cad,stroke-width:1px,color:#1c2330,line-height:1.2
+	classDef first fill:#ffffff,stroke:#5b6575,color:#1c2330
+	classDef last fill:#ffffff,stroke:#5b6575,color:#1c2330
+```
+
+The security screen (code) holds suspicious notices for a person; the assessment agent turns a clean one into a typed `SupplyEvent` and hands it to the drug's alert graph.
+
+### How the rest of the app talks to it
+
+| Event | Call |
+|---|---|
+| A supplier notice arrives | `read_notice` (intake), then `signal` to the drug's alert |
+| Stock watch, a Health Canada report or a person asks for a plan | `signal` |
+| A person approves, rejects, or the approval is refused | `decide` (from the API's approve / reject endpoints) |
+| Each evening | `tick` (follow-up) |
+
+### The daily schedule
+
+The day itself is a simple LangGraph graph too (`services/agents/graph/daily.py`): it loads data and detects signals in code, then hands every agentic step to the pipeline above.
+
+```mermaid
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	ingest(ingest)
+	inbox(inbox)
+	detect(detect)
+	plan_alerts(plan_alerts)
+	reports(reports)
+	followup(followup)
+	record(record)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> ingest;
+	detect -.-> plan_alerts;
+	detect -.-> reports;
+	followup --> record;
+	inbox --> detect;
+	ingest --> inbox;
+	plan_alerts --> reports;
+	reports --> followup;
+	record --> __end__;
+	classDef default fill:#e8f1fb,stroke:#0b5cad,stroke-width:1px,color:#1c2330,line-height:1.2
+	classDef first fill:#ffffff,stroke:#5b6575,color:#1c2330
+	classDef last fill:#ffffff,stroke:#5b6575,color:#1c2330
+```
+
+Routing is always decided in code, never by a model, and the code checks, read-only tools, typed handoffs and approval rules are unchanged. `--orchestrator classic` (or `PIPELINE_ORCHESTRATOR=classic`) runs the same steps without LangGraph. Tests: `tests/test_graph_daily.py` (graph and classic give identical results) and `tests/test_agent_pipeline.py` (pausing, resuming, follow-up and replan loops). Diagrams: `python -m services.agents.graph.pipeline --mermaid`.
+
 ## Repository layout
 
 ```
 apps/api            FastAPI backend: UI state, approvals, day runs
 apps/web            React + Vite web app
 services/agents     Agents, planner, checks, approvals, follow-up, daily run
+services/agents/graph  LangGraph: the agentic pipeline (pipeline.py) and the daily schedule (daily.py)
 ingestion           Health Canada and synthetic-data loaders, nightly workflow
 migrations          Alembic migrations (raw SQL)
 scenarios/progression  10-day synthetic scenario and inbox schedule

@@ -57,12 +57,13 @@ export function applyPlan(lines: StockLine[], plan: Plan, recipientSiteId?: stri
     if (from) from.onHand -= t.qty;
     if (to) to.onHand += t.qty;
   }
+  for (const o of plan.orders) {
+    const site = state.get(o.to ?? recipientSiteId ?? "");
+    if (site) site.arrivals.push({ qty: o.qty, etaDay: o.etaDay });
+  }
   if (recipientSiteId) {
     const recipient = state.get(recipientSiteId);
-    if (recipient) {
-      for (const o of plan.orders) recipient.arrivals.push({ qty: o.qty, etaDay: o.etaDay });
-      if (plan.conservationUsage !== undefined) recipient.usage = plan.conservationUsage;
-    }
+    if (recipient && plan.conservationUsage !== undefined) recipient.usage = plan.conservationUsage;
   }
   return state;
 }
@@ -113,10 +114,12 @@ export function evaluatePlan(
 
   for (const o of plan.orders) {
     checks.push({
-      label: `Expedited order from ${o.supplier}`,
+      label: o.premiumPct ? `Expedited order from ${o.supplier}` : `Order from ${o.supplier}${o.to ? ` for ${siteName(o.to)}` : ""}`,
       ok: false,
       hard: false,
-      detail: `+${o.premiumPct}% unit cost, availability not yet confirmed by supplier`,
+      detail: o.premiumPct
+        ? `+${o.premiumPct}% unit cost, availability not yet confirmed by supplier`
+        : `Expected ${dayLabel(o.etaDay)} at the standard lead time; not yet confirmed by the supplier`,
     });
   }
   if (plan.conservationUsage !== undefined && event.siteId) {

@@ -103,10 +103,13 @@ def run_shortage_signals(
     statuses=ACTIVE_STATUSES,
     limit: int = 20,
     planner=None,
+    pipeline=None,
 ) -> dict:
     """Plan every pending shortage report and save the results. Returns counts by outcome.
 
-    planner: optional code planner (rules_planner) instead of the planning agent."""
+    planner: optional code planner (rules_planner) instead of the planning agent.
+    pipeline: optional LangGraph agentic pipeline (services/agents/graph/pipeline.py) that plans and
+    saves each report instead; same outcomes."""
 
     today = today or default_today()
     outcomes: Counter = Counter()
@@ -114,15 +117,14 @@ def run_shortage_signals(
 
     for report in pending_reports(engine, statuses, limit):
         event = event_from_report(report, today)
-        result = process_event(event, data=data, llm=llm, today=today, planner=planner)
-        ids = save_pipeline_result(
-            engine,
-            result,
-            source_ref=f"{SOURCE_PREFIX}{report['report_id']}",
-            actor="shortage-signal",
-            source_type="shortage_report",
-            kind="shortage",
-        )
+        save = {"source_ref": f"{SOURCE_PREFIX}{report['report_id']}", "actor": "shortage-signal",
+                "source_type": "shortage_report", "kind": "shortage"}
+        if pipeline is not None:
+            final = pipeline.signal(report["din"], {"event": event.model_dump(), "save": save, "join": False}, today)
+            result, ids = final["result"], {"event_id": final.get("alert_id"), "plan_id": final.get("plan_id")}
+        else:
+            result = process_event(event, data=data, llm=llm, today=today, planner=planner)
+            ids = save_pipeline_result(engine, result, **save)
         outcomes[result["status"]] += 1
         saved.append({"report_id": report["report_id"], "din": report["din"], "status": result["status"], **ids})
         logger.info("shortage report %s -> %s", report["report_id"], result["status"])

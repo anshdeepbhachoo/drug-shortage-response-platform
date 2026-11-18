@@ -51,8 +51,9 @@ def _naive_utc(value: datetime) -> datetime:
 # Reading: approved transfers and their saved follow-up history
 # ---------------------------------------------------------
 
-def approved_transfers(engine: Engine, deadline_hours: float = DEFAULT_DEADLINE_HOURS) -> list[TransferRequest]:
-    """One TransferRequest per move of every approved transfer option."""
+def approved_transfers(engine: Engine, deadline_hours: float = DEFAULT_DEADLINE_HOURS,
+                       plan_id: str | None = None) -> list[TransferRequest]:
+    """One TransferRequest per move of every approved transfer option (or only plan_id's)."""
 
     with engine.connect() as conn:
         rows = conn.execute(text("""
@@ -63,8 +64,9 @@ def approved_transfers(engine: Engine, deadline_hours: float = DEFAULT_DEADLINE_
             JOIN supply_event e ON e.event_id = p.event_id
             JOIN plan_action a ON a.plan_id = d.plan_id AND a.option_index = d.option_index
             WHERE d.decision = 'approved' AND p.status = 'approved' AND a.type = 'transfer'
+              AND (CAST(:plan_id AS text) IS NULL OR d.plan_id = :plan_id)
             ORDER BY d.decided_at, a.action_id
-        """)).all()
+        """), {"plan_id": plan_id}).all()
 
     return [
         TransferRequest(
@@ -160,8 +162,9 @@ def stock_snapshot_time(engine: Engine, data) -> datetime:
     return datetime.combine(as_of, time())
 
 
-def build_agent(engine: Engine, data, llm=None, planner=None, deadline_hours: float = DEFAULT_DEADLINE_HOURS) -> FollowUpAgent:
-    requests = approved_transfers(engine, deadline_hours)
+def build_agent(engine: Engine, data, llm=None, planner=None, deadline_hours: float = DEFAULT_DEADLINE_HOURS,
+                plan_id: str | None = None) -> FollowUpAgent:
+    requests = approved_transfers(engine, deadline_hours, plan_id)
     by_id = {request.request_id: request for request in requests}
     agent = FollowUpAgent(
         data,
@@ -183,10 +186,11 @@ def run_followup(
     llm=None,
     planner=None,
     deadline_hours: float = DEFAULT_DEADLINE_HOURS,
+    plan_id: str | None = None,
 ) -> list[FollowUpAction]:
-    """Check every open approved transfer at `now`. Returns this run's actions."""
+    """Check every open approved transfer at `now` (or only plan_id's). Returns this run's actions."""
 
-    agent = build_agent(engine, data, llm, planner, deadline_hours)
+    agent = build_agent(engine, data, llm, planner, deadline_hours, plan_id)
     return agent.tick(_naive_utc(now), list(replies))
 
 

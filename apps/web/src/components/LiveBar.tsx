@@ -213,7 +213,7 @@ function DayReport({ summary }: { summary: DaySummary }) {
             <Origin by="agent" compact /> Follow-up:{" "}
             {summary.followup.length
               ? summary.followup.map((f) => (byId.has(f.transfer) ? followupLine(byId.get(f.transfer)!, f.decision) : `${f.transfer}: ${f.decision}`)).join("; ")
-              : "no approved transfers"}
+              : "nothing approved to follow up"}
           </li>
         </ul>
       </div>

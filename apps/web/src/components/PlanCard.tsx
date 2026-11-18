@@ -38,11 +38,19 @@ const NON_TRANSFER: Record<string, { moves: string; check: string; checkDetail: 
     checkDetail: "Choosing it records who took the problem on",
   },
   order: {
-    moves: "A new order is placed with a supplier.",
-    check: "Order details are confirmed by procurement",
-    checkDetail: "Nothing is sent from here",
+    moves: "Nothing moves between hospitals. Procurement places a new order with a supplier that has supplied this drug before.",
+    check: "Each hospital still has stock when its order arrives",
+    checkDetail: "Quantity, supplier and date are worked out in code; approving records the order, nothing is sent",
   },
 };
+
+/** Who proposed an option: order options are always worked out by the order rules (code), the rest by
+ * the rules planner or the planning agent. */
+function proposedBy(plan: Plan): { by: "rules" | "agent"; label: string } {
+  if (plan.optionType === "order" || plan.explanation.startsWith("Order rules")) return { by: "rules", label: "Order rules" };
+  if (plan.explanation.startsWith("Rules planner")) return { by: "rules", label: "Rules planner" };
+  return { by: "agent", label: "Planning agent" };
+}
 
 export function planStatus(status: PlanStatus, live: boolean) {
   const base = PLAN_STATUS[status];
@@ -98,7 +106,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
         <div>
           {state.live && (
             <div className="row" style={{ gap: 6, marginBottom: 4 }}>
-              <Origin by={plan.explanation.startsWith("Rules planner") ? "rules" : "agent"} label={plan.explanation.startsWith("Rules planner") ? "Rules planner" : "Planning agent"} />
+              <Origin {...proposedBy(plan)} />
               <span className="label">{planSubject(drug.name, event)}</span>
             </div>
           )}
@@ -123,7 +131,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
         <div className="plan-cols">
           <div>
             <div className="label" style={{ marginBottom: 8 }}>
-              Transfers
+              {kind === "order" ? "Order" : "Transfers"}
             </div>
             <div className="flow">
               {plan.transfers.map((t, i) => (
@@ -141,7 +149,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
                   <span className="qty">
                     {o.qty} by {dayLabel(o.etaDay)}
                   </span>
-                  <span className="to">{siteName(event.siteId ?? "")}</span>
+                  <span className="to">{siteName(o.to ?? event.siteId ?? "")}</span>
                 </div>
               ))}
               {nonTransfer && <p className="small ink-2">{nonTransfer.moves}</p>}
@@ -222,7 +230,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
 
       {!compact && (
         <details className="why">
-          <summary>{plan.explanation.startsWith("Rules planner") ? "Rationale · rules planner" : "Rationale · planning agent"}</summary>
+          <summary>Rationale · {proposedBy(plan).label.toLowerCase()}</summary>
           <div className="inner">
             <p>{plan.explanation}</p>
             <span className="small muted">Every number in this text was checked against the calculation before it was shown.</span>
