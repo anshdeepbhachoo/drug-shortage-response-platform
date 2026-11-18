@@ -45,14 +45,19 @@ def _actions(plan_id: str, result: dict) -> list[dict]:
             "verified": option in verified,
             "problems": json.dumps(rejected[index]) if index in rejected else None,
         }
-        moves = option.get("moves") or [None]
-        for move_index, move in enumerate(moves):
+        none = {"from_site": None, "to_site": None, "units": None, "supplier_id": None, "expected_date": None}
+        if option.get("order_lines"):
+            # One row per order line: to_site is the hospital the order is for; no from_site.
+            lines = [{**none, "to_site": l["site_id"], "units": l["units"], "supplier_id": l["supplier_id"],
+                      "expected_date": l["expected_date"]} for l in option["order_lines"]]
+        else:
+            lines = [{**none, **{k: m[k] for k in ("from_site", "to_site", "units")}} for m in option.get("moves") or []]
+        lines = lines or [none]
+        for line_index, line in enumerate(lines):
             rows.append({
                 **common,
-                "action_id": f"{plan_id}-O{index + 1}" + (f"-M{move_index + 1}" if len(moves) > 1 else ""),
-                "from_site": move["from_site"] if move else None,
-                "to_site": move["to_site"] if move else None,
-                "units": move["units"] if move else None,
+                **line,
+                "action_id": f"{plan_id}-O{index + 1}" + (f"-M{line_index + 1}" if len(lines) > 1 else ""),
             })
     return rows
 
@@ -160,7 +165,7 @@ def save_pipeline_result(
                     "no_perfect_plan": bool(result.get("no_perfect_plan")),
                     # What the options were checked against; approval re-checks with current stock.
                     "detail": json.dumps({key: result.get(key) for key in
-                                          ("shortfall", "cover_days", "delay_days", "risk_sites")}),
+                                          ("shortfall", "cover_days", "delay_days", "risk_sites", "planned_on")}),
                 },
             )
             for action in _actions(saved["plan_id"], result):
@@ -168,9 +173,11 @@ def save_pipeline_result(
                     text(
                         """
                         INSERT INTO plan_action (action_id, plan_id, option_index, type, description, reasoning,
-                                                 from_site, to_site, units, verified, problems)
+                                                 from_site, to_site, units, supplier_id, expected_date,
+                                                 verified, problems)
                         VALUES (:action_id, :plan_id, :option_index, :type, :description, :reasoning,
-                                :from_site, :to_site, :units, :verified, CAST(:problems AS jsonb))
+                                :from_site, :to_site, :units, :supplier_id, CAST(:expected_date AS date),
+                                :verified, CAST(:problems AS jsonb))
                         """
                     ),
                     action,

@@ -12,3 +12,5 @@ pydantic==2.14.3
 pytest==9.2.0
 fastapi==0.163.1
 uvicorn==0.54.0
+langgraph==1.2.22
+langgraph-checkpoint-postgres==3.2.1

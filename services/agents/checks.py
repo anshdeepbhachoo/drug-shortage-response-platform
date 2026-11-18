@@ -1,5 +1,6 @@
 import re
 
+from services.agents.orders import check_order
 from services.agents.schemas import PlanOption
 
 
@@ -141,10 +142,13 @@ def check_options(
     reserve_days: dict | None = None,
     drug_din: str = "",
     approved_substitutes: set[str] | None = None,
+    order_context: dict | None = None,
 ) -> tuple[list[PlanOption], dict]:
     """Check every option a person could choose. Returns (passed, {index: problems}).
 
     transfer:   the transfer rules (check_transfer).
+    order:      the order rules (orders.check_order); order_context holds
+                {"suppliers", "today", "min_arrival_days"}.
     substitute: only from the pre-approved substitution table (check_substitute).
     conserve:   nothing to compute; a clinical judgement, chosen by a person.
     escalate:   a hand-off to a person; nothing to compute.
@@ -157,6 +161,11 @@ def check_options(
             problems = check_transfer(option, stock, shortfall, reserve_days=reserve_days)
         elif option.type == "substitute":
             problems = check_substitute(option, drug_din, approved_substitutes or set())
+        elif option.type == "order":
+            if order_context is None:
+                problems = ["Order options need supplier and lead-time data to be checked."]
+            else:
+                problems = check_order(option, stock, shortfall, **order_context)
         else:
             problems = []
         if problems:

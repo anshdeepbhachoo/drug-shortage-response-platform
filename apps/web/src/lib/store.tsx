@@ -10,7 +10,7 @@ import {
   siteName,
   applyLiveData,
 } from "../data/mock";
-import { api, type DaySummary, type FollowUp, type LiveState, type Planner } from "./api";
+import { api, type DaySummary, type FollowUp, type LiveState, type OrderStatus, type Planner } from "./api";
 import type { AuditEntry, Draft, Email, Plan, Role, StockLine, SupplyEvent } from "./types";
 
 export const STEPS = [
@@ -415,6 +415,8 @@ export interface LiveControls {
   runDay: (day: string, planner: Planner) => Promise<boolean>;
   /** Supply manager: plan a response for one drug now. Resolves to the alert to open. */
   planDrug: (din: string, siteId?: string) => Promise<string | null>;
+  /** Procurement / supply manager: record what happened to an approved order (placed, received). */
+  recordOrder: (orderId: string, status: OrderStatus) => Promise<void>;
   lastDay: DaySummary | null;
   clear: () => void;
 }
@@ -506,7 +508,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }),
     runFollowup: (now) => run("Running follow-up", async () => {
       const actions = await api.runFollowup(now, stateRef.current.live?.asOf);
-      return actions.length ? actions.map((a) => `${a.request_id}: ${a.decision}`).join("; ") : "No approved transfers to follow up.";
+      return actions.length ? actions.map((a) => `${a.request_id}: ${a.decision}`).join("; ") : "No approved transfers or orders to follow up.";
     }),
     runDay: async (day, planner) => {
       let ok = false;
@@ -533,6 +535,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
       return eventId;
     },
+    recordOrder: (orderId, status) => run("Recording the order", async () => {
+      const current = stateRef.current;
+      await api.orderStatus(orderId, { by: USERS[current.role].name, role: current.role, status, as_of: current.live?.asOf });
+      return `Order ${orderId} recorded as ${status === "delivered" ? "received" : status}.`;
+    }),
     lastDay,
     clear: () => { setError(null); setNotice(null); },
   }), [mode, busy, error, notice, lastDay, run, load]);
