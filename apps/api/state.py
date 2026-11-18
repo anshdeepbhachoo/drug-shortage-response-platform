@@ -12,13 +12,14 @@ dates and audit times line up with it.
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from services.agents.approvals import APPROVER_ROLES
+from services.agents.followup_db import DEFAULT_DEADLINE_HOURS
 from services.agents.db_data import PostgresData
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -443,10 +444,14 @@ def followups(conn, names: dict[str, str], site_names: dict[str, str]) -> list[d
             "id": m["action_id"], "drugId": m["din"], "drug": names.get(m["din"], m["din"]),
             "from": site_names.get(m["from_site"], m["from_site"]), "to": site_names.get(m["to_site"], m["to_site"]),
             "units": m["units"], "approvedAt": m["decided_at"].isoformat(),
+            # When the follow-up agent expects the transfer to have arrived (same deadline it checks against).
+            "expectedBy": (m["decided_at"] + timedelta(hours=DEFAULT_DEADLINE_HOURS)).isoformat(),
             "decision": decision,
             "status": FOLLOWUP_STATUS.get(decision, decision) if decision else "Not checked yet: follow-up runs each evening",
             "confirmed": facts.get("units_confirmed"), "hoursOverdue": facts.get("hours_overdue"),
             "checkedAt": detail.get("at"),
+            # "agent" when the model chose; "rule" or "fallback" when code did.
+            "decidedBy": detail.get("decided_by"),
             "reason": detail.get("reason", ""),
         })
     return result

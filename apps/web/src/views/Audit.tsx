@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { Card, ChartGuide, PageHead, SourceChip, TierStatus, formatDays } from "../components/ui";
+import { Card, ChartGuide, Origin, PageHead, SourceChip, TierStatus, formatDays } from "../components/ui";
+import { InfoNotes } from "../components/PageNotes";
+import "./signal-audit.css";
+import { Icon, type IconName } from "../components/icons";
 import { DRUGS, SITES, dayLabel, drugById, siteName, timeLabel } from "../data/mock";
 import { lineCoverage, tierFor, withApprovedPlans } from "../lib/risk";
 import { useStore } from "../lib/store";
@@ -24,6 +27,7 @@ function who(e: AuditEntry) {
   return `System (${e.actorName.replace("-", " ")})`;
 }
 
+/** Text in the circle beside each timeline entry (original cue): initials for people, AI, P(lanner), S(ystem). */
 function dot(e: AuditEntry) {
   if (isHuman(e.actor)) return e.actorName.split(" ").map((p) => p[0]).join("");
   if (e.actor === "agent") return "AI";
@@ -31,13 +35,22 @@ function dot(e: AuditEntry) {
   return "S";
 }
 
+/* The four kinds of actor, in the order work flows through the platform.
+   Drawn as a diagram at the top of the page; each node also filters the timeline. */
+const FLOW: { id: Filter; icon: IconName; title: string; note: string }[] = [
+  { id: "system", icon: "cog", title: "System", note: "Brings data in" },
+  { id: "agent", icon: "sparkle", title: "AI", note: "Reads and explains" },
+  { id: "solver", icon: "route", title: "Planner", note: "Checks and ranks plans" },
+  { id: "people", icon: "user", title: "People", note: "Make every decision" },
+];
+
 export function Audit() {
   const { state } = useStore();
   const [filter, setFilter] = useState<Filter>("all");
   const rule = FILTERS.find((f) => f.id === filter)!;
   const rows = state.audit.filter((a) => rule.match(a.actor));
 
-  // Group entries that happened at the same minute.
+  // Group entries that happened at the same minute, so each time label appears once.
   const groups: { at: number; items: AuditEntry[] }[] = [];
   for (const r of rows) {
     const g = groups[groups.length - 1];
@@ -49,21 +62,50 @@ export function Audit() {
   const ai = state.audit.filter((a) => a.actor === "agent").length;
 
   return (
-    <>
+    // `.sa-page` scopes this page's styles (views/signal-audit.css) so no other page changes.
+    <div className="sa-page">
       <PageHead
-        label="History"
-        title="Everything that happened, in order"
-        lead={`${state.audit.length} entries so far: ${humans} by people, ${ai} by the AI, the rest by the planner and system. Entries can only be added, never changed.`}
+        label="Audit Trail"
+        title={state.live ? "Audit Trail" : "Everything that happened, in order"}
+        lead={`${state.audit.length} entries · ${humans} by people · ${ai} by the AI · the rest by the planner and system`}
+      />
+
+      {/* Diagram: who acts at each stage, with how many entries each made. Click a stage to filter. */}
+      <ol className="actor-flow" aria-label="Who did what">
+        {FLOW.map((f) => {
+          const n = state.audit.filter((a) => FILTERS.find((x) => x.id === f.id)!.match(a.actor)).length;
+          return (
+            <li key={f.id}>
+              <button className={`actor-node ${f.id} ${filter === f.id ? "on" : ""}`} aria-pressed={filter === f.id} onClick={() => setFilter(filter === f.id ? "all" : f.id)}>
+                <span className="actor-ico">
+                  <Icon name={f.icon} size={20} />
+                </span>
+                <span className="actor-text">
+                  <span className="actor-title">{f.title}</span>
+                  <span className="actor-note">{f.note}</span>
+                </span>
+                <span className="actor-count num">{n}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+
+      <InfoNotes
+        items={[
+          { icon: "book", title: "Append-only", text: "Entries can only be added, never edited or removed." },
+          { icon: "clock", title: "Newest first", text: "Entries in the same minute are grouped under one time." },
+          { icon: "link", title: "Trace any number", text: "Pick a drug and hospital on the right to see every record behind its days of stock." },
+        ]}
       />
 
       <div className="grid-2">
         <section className="card">
           <header className="card-head" style={{ alignItems: "center" }}>
             <div>
-              <div className="label" style={{ marginBottom: 4 }}>
-                Newest first
-              </div>
-              <h3>Timeline</h3>
+              <h3>
+                <Icon name="clock" size={18} /> Timeline
+              </h3>
             </div>
             <div className="filters" role="group" aria-label="Filter by who did it">
               {FILTERS.map((f) => (
@@ -84,24 +126,32 @@ export function Audit() {
             />
           </div>
           <ol className="timeline" style={{ marginTop: 8, paddingBottom: 10 }}>
+            {groups.length === 0 && <li className="small muted tl-empty">No entries for this filter.</li>}
             {groups.map((g) => (
               <li key={`${g.at}-${g.items[0].id}`} className="tl-group">
-                <div className="tl-time">{timeLabel(g.at)}</div>
+                <div className="tl-time">
+                  <Icon name="clock" size={13} /> {timeLabel(g.at)}
+                </div>
                 {g.items.map((e) => (
                   <div key={e.id} className="tl-item">
                     <span className={`who-dot ${isHuman(e.actor) ? "human" : e.actor === "agent" ? "agent" : ""}`} aria-hidden>
                       {dot(e)}
                     </span>
-                    <div>
+                    <div className="tl-body">
                       <div className="what">
-                        <b>{who(e)}</b> · {e.action.toLowerCase()} <span className="mono muted">{e.object}</span>
+                        {state.live && <Origin by={isHuman(e.actor) ? "human" : e.actor === "agent" ? "agent" : "rules"} compact />}
+                        <b>{who(e)}</b>
+                        <span className="tl-action">{e.action}</span>
+                        <span className="tl-object">{e.object}</span>
                       </div>
-                      <div className="detail">{e.detail}.</div>
-                      <div className="chips">
-                        {e.refs.map((r) => (
-                          <SourceChip key={r} id={r} />
-                        ))}
-                      </div>
+                      {e.detail && <p className="detail">{e.detail}.</p>}
+                      {e.refs.length > 0 && (
+                        <div className="chips">
+                          {e.refs.map((r) => (
+                            <SourceChip key={r} id={r} />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -112,7 +162,7 @@ export function Audit() {
 
         <Trace />
       </div>
-    </>
+    </div>
   );
 }
 
@@ -133,7 +183,7 @@ function Trace() {
   const projectedDays = lineCoverage(projectedLine);
 
   return (
-    <Card label="Trace a number" title="Where does this number come from?">
+    <Card label="Data lineage" title={state.live ? "Trace a figure to its source" : "Where does this number come from?"}>
       <div className="row" style={{ marginBottom: 16 }}>
         <select className="input" value={drugId} onChange={(e) => setDrugId(e.target.value)} aria-label="Drug">
           {DRUGS.map((d) => (
@@ -160,11 +210,14 @@ function Trace() {
         example={<>Stock on hand ÷ daily use, plus any deliveries due = days of stock.</>}
       />
       <div className="trace-chain">
+        {/* The result sits at the top; every step below is an ingredient of it. */}
         <div className="trace-step root">
-          <span className="node" />
+          <span className="node">
+            <Icon name="check" size={12} />
+          </span>
           <div>
             <div className="row-between">
-              <span style={{ fontSize: 22, fontWeight: 600 }} className="num">
+              <span className="num trace-result">
                 {formatDays(days)} days
               </span>
               <TierStatus tier={tierFor(days, line.safetyDays)} />
@@ -177,20 +230,20 @@ function Trace() {
             )}
           </div>
         </div>
-        <Step text={`${line.onHand} ${drug.unit} on hand`} note="Stock count" refs={[line.inventoryRef]} />
-        <Step text={`÷ ${line.dailyUsage} used per day`} note="Usage record" refs={[usageRef]} />
+        <Step icon="box" text={`${line.onHand} ${drug.unit} on hand`} note="Stock count" refs={[line.inventoryRef]} />
+        <Step icon="hospital" text={`÷ ${line.dailyUsage} used per day`} note="Usage record" refs={[usageRef]} />
         {line.orders.map((o) => (
           <div key={o.id}>
-            <Step text={`+ ${o.qty} arriving ${dayLabel(o.etaDay)}`} note={o.status === "delayed" ? `Order ${o.id}, originally due ${dayLabel(o.originalEtaDay ?? o.etaDay)}` : `Order ${o.id}`} refs={[o.id]} />
+            <Step icon="truck" text={`+ ${o.qty} arriving ${dayLabel(o.etaDay)}`} note={o.status === "delayed" ? `Order ${o.id}, originally due ${dayLabel(o.originalEtaDay ?? o.etaDay)}` : `Order ${o.id}`} refs={[o.id]} />
             {o.status === "delayed" && delayEvent && (
               <div className="trace-sub">
-                <Step text="Date changed by a supplier alert" note="Alert" refs={[delayEvent.id]} />
-                <Step text={`Read from the supplier's email, ${Math.round(delayEvent.confidence * 100)}% sure`} note="Original email" refs={[delayEvent.sourceRef]} />
+                <Step icon="alert" text="Date changed by a supplier alert" note="Alert" refs={[delayEvent.id]} />
+                <Step icon="mail" text={`Read from the supplier's email, ${Math.round(delayEvent.confidence * 100)}% sure`} note="Original email" refs={[delayEvent.sourceRef]} />
               </div>
             )}
           </div>
         ))}
-        <Step text={`Drug identity: ${drug.name}`} note="Health Canada drug database and critical drug list" refs={[drug.dpdRef, ...(drug.criticalList ? ["CDL-2026-V3"] : [])]} />
+        <Step icon="pill" text={`Drug identity: ${drug.name}`} note="Health Canada drug database and critical drug list" refs={[drug.dpdRef, ...(drug.criticalList ? ["CDL-2026-V3"] : [])]} />
       </div>
       <p className="small muted" style={{ marginTop: 4 }}>
         {siteName(siteId)} · click any record ID to open it.
@@ -199,10 +252,13 @@ function Trace() {
   );
 }
 
-function Step({ text, note, refs }: { text: string; note: string; refs: string[] }) {
+/** One link in the lineage chain: what it adds to the number, and the record it came from. */
+function Step({ text, note, refs, icon = "link" }: { text: string; note: string; refs: string[]; icon?: IconName }) {
   return (
     <div className="trace-step">
-      <span className="node" />
+      <span className="node">
+        <Icon name={icon} size={12} />
+      </span>
       <div>
         <div className="t">{text}</div>
         <div className="s">
