@@ -1,8 +1,10 @@
-# Drug shortage response platform
+# MediFlow
+
+**MediFlow** is an agentic AI platform for hospital drug-shortage detection, coordination, allocation planning, and auditable response (Cognizant BrAInstorm Challenge 2026).
 
 Takes a hospital network from a drug shortage signal to an approved, auditable response. It loads hospital stock every day, reads supplier emails and Health Canada shortage reports, works out which drugs will run out where, proposes ways to cover the gap, and routes each plan to the right person to approve. AI agents handle the language-heavy work; code does every calculation and safety check; people make every decision.
 
-> **Development branch:** `feat/ui-agent-integration`. Open pull requests against it, not `main`.
+> **Development branch:** `dev`. Open pull requests against `dev`, not `main`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Home:** today's run and a tile for each part of the platform.
 
@@ -316,13 +318,16 @@ docker stop dsr-test
 
 ## Working together
 
-- Branch from `feat/ui-agent-integration` (`feat/...`, `fix/...`, `docs/...`), keep pull requests small, and merge back into it.
-- Conventional commit messages (`feat:`, `fix:`, `docs:`).
+- Branch from `dev` (`feat/...`, `fix/...`, `docs/...`, `chore/...`), keep pull requests small, and merge back into `dev`.
+- Conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`).
 - New logic comes with tests.
 - Secrets stay in `.env`, which is ignored by git.
+- Full contributor guide: [CONTRIBUTING.md](CONTRIBUTING.md). Security notes: [SECURITY.md](SECURITY.md).
 
 ## More documentation
 
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
 - [Project overview](docs/PROJECT_OVERVIEW.md): problem, users, data sources, design
 - [Team and workflow](docs/TEAM_AND_WORKFLOW.md)
 - [Agents](services/agents/README.md): design rules and the signal and follow-up pipelines

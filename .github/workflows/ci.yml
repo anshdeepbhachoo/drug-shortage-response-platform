@@ -1,0 +1,175 @@
+name: MediFlow CI
+
+on:
+  push:
+    branches:
+      - dev
+      - "feat/**"
+      - "fix/**"
+      - "docs/**"
+      - "chore/**"
+  pull_request:
+    branches:
+      - dev
+
+concurrency:
+  group: mediflow-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          # README documents Python 3.14; setup-python supports this release line.
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run pytest (no external services)
+        run: python -m pytest -q
+        env:
+          # Keep database and Bedrock tests skipped; never inject real credentials.
+          API_NO_AUTOSTART: "1"
+
+      - name: Check for unexpected tracked file changes
+        # Isolated CI checkout is disposable. Do not restore or rewrite history.
+        # tests/test_progression may regenerate scenarios/progression (documented in README).
+        # Fail only if other tracked paths change.
+        #
+        # Use git diff --name-only HEAD (not porcelain parsing). Porcelain lines like
+        # " M path" were previously mis-parsed so allowlisted progression paths looked
+        # unexpected (leading status letter kept in the path).
+        run: |
+          set -euo pipefail
+          dirty=()
+          while IFS= read -r path; do
+            [ -z "$path" ] && continue
+            dirty+=("$path")
+          done < <(git diff --name-only HEAD)
+          unexpected=()
+          for path in "${dirty[@]}"; do
+            case "$path" in
+              scenarios/progression|scenarios/progression/*) ;;
+              *) unexpected+=("$path") ;;
+            esac
+          done
+          if [ "${#dirty[@]}" -gt 0 ]; then
+            echo "Tracked paths modified during tests:"
+            printf '%s\n' "${dirty[@]}"
+            git diff --stat HEAD
+          fi
+          if [ "${#unexpected[@]}" -gt 0 ]; then
+            echo "::error::Unexpected tracked file modifications outside scenarios/progression:"
+            printf '%s\n' "${unexpected[@]}"
+            exit 1
+          fi
+          if [ "${#dirty[@]}" -gt 0 ]; then
+            echo "Only known regenerating paths under scenarios/progression were modified; not restored."
+          else
+            echo "No tracked file modifications detected."
+          fi
+
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run Vitest
+        run: npm test
+
+      - name: Typecheck and build
+        run: npm run build
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # fetch-depth 0 only so git can resolve the event commit range.
+      # Gitleaks is invoked with --log-opts so it does NOT scan full history.
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Pinned binary avoids org license requirements of gitleaks-action.
+      - name: Install Gitleaks
+        env:
+          GITLEAKS_VERSION: 8.24.3
+        run: |
+          set -euo pipefail
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          ./gitleaks version
+
+      - name: Run Gitleaks on event commits
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ZERO="0000000000000000000000000000000000000000"
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            # Scan only commits introduced by the PR into dev.
+            LOG_OPTS="${PR_BASE}..${PR_HEAD}"
+            SCOPE="pull_request ${PR_BASE}..${PR_HEAD}"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            if [ "$PUSH_BEFORE" = "$ZERO" ]; then
+              # Newly created branch: scan commits not already on origin/dev.
+              # Falls back to the tip commit only if origin/dev is unavailable.
+              git fetch --no-tags origin dev:refs/remotes/origin/dev 2>/dev/null || true
+              if git rev-parse --verify origin/dev >/dev/null 2>&1; then
+                LOG_OPTS="origin/dev..${PUSH_AFTER}"
+                SCOPE="new_branch origin/dev..${PUSH_AFTER}"
+              else
+                LOG_OPTS="-n 1 ${PUSH_AFTER}"
+                SCOPE="new_branch tip ${PUSH_AFTER}"
+              fi
+            else
+              # Scan only commits in this push.
+              LOG_OPTS="${PUSH_BEFORE}..${PUSH_AFTER}"
+              SCOPE="push ${PUSH_BEFORE}..${PUSH_AFTER}"
+            fi
+          else
+            echo "::error::Unsupported event for secret scan: ${EVENT_NAME}"
+            exit 1
+          fi
+
+          echo "Gitleaks scan scope: ${SCOPE}"
+          echo "gitleaks --log-opts=${LOG_OPTS}"
+          # --redact keeps matched secret values out of logs.
+          ./gitleaks detect --source . --log-opts="${LOG_OPTS}" --verbose --redact --exit-code 1
