@@ -50,6 +50,7 @@ from ingestion.synthetic_loader import PROGRESSION_DAYS, load_folder
 from services.agents.agent import process_email, process_event
 from services.agents.db_data import PostgresData
 from services.agents.followup_db import approved_transfers, run_followup
+from services.agents.order_agent import approved_orders, resolve_model, run_order_followup
 from services.agents.results_store import open_event_for, save_pipeline_result
 from services.agents.rules_planner import rules_planner
 from services.agents.schemas import SupplyEvent
@@ -358,19 +359,24 @@ def step_reports(ctx: DayContext) -> dict:
 
 
 def step_followup(ctx: DayContext) -> dict:
-    """5. Follow up on approved transfers in the evening."""
+    """5. Follow up on approved transfers and approved orders in the evening."""
 
     now = datetime.combine(ctx.day, time(FOLLOWUP_HOUR))
+    order_model = resolve_model(ctx.llm, ctx.use_rules)
     if ctx.pipeline is None:
         actions = run_followup(ctx.write_engine, ctx.data, now)
-        return {"followup": [{"transfer": a.request_id, "decision": a.decision} for a in actions]}
+        checks = [{"transfer": a.request_id, "decision": a.decision} for a in actions]
+        checks += [{"transfer": a.request_id, "decision": a.decision, "kind": "order"}
+                   for a in run_order_followup(ctx.write_engine, ctx.data, now, order_model)]
+        return {"followup": checks}
 
-    # Agentic pipeline: resume each drug's alert paused at follow-up. Alerts approved before the
-    # pipeline existed have no paused graph, so their transfers are followed up directly.
+    # Agentic pipeline: resume each drug's alert paused at follow-up (transfers) or order follow-up.
+    # Alerts approved before the pipeline existed have no paused graph, so they are followed up directly.
     requests = approved_transfers(ctx.write_engine)
-    order = {r.request_id: i for i, r in enumerate(requests)}
+    orders = approved_orders(ctx.write_engine)
+    position = {r.request_id: i for i, r in enumerate(requests)} | {o.order_id: len(requests) + i for i, o in enumerate(orders)}
     checks: list[dict] = []
-    for din in dict.fromkeys(r.din for r in requests):
+    for din in dict.fromkeys([r.din for r in requests] + [o.din for o in orders]):
         resumed = ctx.pipeline.tick(din, ctx.day, now)
         if resumed is not None:
             checks += resumed
@@ -378,7 +384,10 @@ def step_followup(ctx: DayContext) -> dict:
         for plan_id in dict.fromkeys(r.plan_id for r in requests if r.din == din):
             checks += [{"transfer": a.request_id, "decision": a.decision}
                        for a in run_followup(ctx.write_engine, ctx.data, now, plan_id=plan_id)]
-    return {"followup": sorted(checks, key=lambda c: order.get(c["transfer"], len(order)))}
+        for plan_id in dict.fromkeys(o.plan_id for o in orders if o.din == din):
+            checks += [{"transfer": a.request_id, "decision": a.decision, "kind": "order"}
+                       for a in run_order_followup(ctx.write_engine, ctx.data, now, order_model, plan_id=plan_id)]
+    return {"followup": sorted(checks, key=lambda c: position.get(c["transfer"], len(position)))}
 
 
 def step_record(ctx: DayContext, summary: dict) -> dict:

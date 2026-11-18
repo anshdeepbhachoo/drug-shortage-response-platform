@@ -18,8 +18,12 @@ export interface LiveState extends LiveCatalog {
 }
 
 /** One approved transfer and the follow-up agent's latest check on it. */
+export type OrderStatus = "approved" | "placed" | "in_transit" | "delayed" | "delivered" | "cancelled";
+
 export interface FollowUp {
   id: string;
+  /** A transfer between hospitals, or an order from a supplier (from = the supplier). */
+  kind?: "transfer" | "order";
   drugId: string;
   drug: string;
   from: string;
@@ -35,6 +39,13 @@ export interface FollowUp {
   checkedAt?: string | null;
   decidedBy?: "agent" | "rule" | "fallback" | null;
   reason: string;
+  /** Orders only. */
+  orderStatus?: OrderStatus;
+  orderStatusText?: string;
+  messageTo?: string | null;
+  messageDraft?: string | null;
+  /** The order agent's request to the supplier, for a person to send. */
+  request?: { to: string; subject: string; body: string; decidedBy: "agent" | "rule" } | null;
 }
 
 export interface DaySummary {
@@ -89,6 +100,8 @@ export const api = {
       `/drugs/${encodeURIComponent(din)}/plan`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+  orderStatus: (orderId: string, body: { by: string; role: Role; status: OrderStatus; expected_date?: string; as_of?: string }) =>
+    call<{ status: string }>(`/orders/${encodeURIComponent(orderId)}/status`, { method: "POST", body: JSON.stringify(body) }),
   runFollowup: (now: string, asOf?: string) =>
     call<{ request_id: string; decision: string; reason: string }[]>("/followup/run", {
       method: "POST",

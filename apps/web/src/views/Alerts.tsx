@@ -5,6 +5,7 @@ import { SITES, dayLabel, drugById, siteName } from "../data/mock";
 import { lineCoverage, tierFor } from "../lib/risk";
 import { currentOptions, stageOf, type Stage } from "../lib/response";
 import { useStore } from "../lib/store";
+import type { FollowUp } from "../lib/api";
 import type { Tier } from "../lib/types";
 
 type Go = (view: "approvals" | "events", eventId?: string) => void;
@@ -230,11 +231,17 @@ function AlertDetail({ a, go }: { a: ReturnType<typeof useAlerts>[number]; go: G
           {a.stage === "tracking" && (() => {
             const approved = a.options.find((p) => p.status === "approved");
             const record = approved && state.audit.find((e) => e.action === "Approved" && e.refs.includes(approved.solverRun));
-            return record ? (
-              <p className="small ink-2">
-                Approved by <Origin by="human" label={record.actorName} /> · option {approved!.rank}
-              </p>
-            ) : null;
+            const orders = (state.live?.followups ?? []).filter((f) => f.kind === "order" && approved && f.id.startsWith(`PO-${approved.solverRun}-`));
+            return (
+              <>
+                {record && (
+                  <p className="small ink-2">
+                    Approved by <Origin by="human" label={record.actorName} /> · option {approved!.rank}
+                  </p>
+                )}
+                {orders.map((o) => <OrderTracking key={o.id} order={o} />)}
+              </>
+            );
           })()}
           {a.stage === "attention" && a.options.length > 0 && (
             <p className="small muted">No transfer passed the safety checks. The options above need a person: escalate, conserve, or an approved substitute.</p>
@@ -245,3 +252,63 @@ function AlertDetail({ a, go }: { a: ReturnType<typeof useAlerts>[number]; go: G
   );
 }
 
+
+const ORDER_TONE: Record<string, Tone> = { approved: "warn", placed: "good", in_transit: "good", delayed: "warn", delivered: "good", cancelled: "crit" };
+const CHECK_TONE: Record<string, Tone> = { wait: "good", close: "good", nudge: "warn", escalate: "crit", replan: "crit" };
+
+/** An approved order: where it stands, the order agent's latest check and its request to the supplier.
+ * Procurement (or the supply manager) records what happened; nothing is sent from here. */
+function OrderTracking({ order: o }: { order: FollowUp }) {
+  const { state, live } = useStore();
+  const canRecord = (state.role === "procurement" || state.role === "supply") && live.busy === null;
+  const expected = o.expectedBy ? new Date(o.expectedBy).toLocaleDateString("en-CA", { month: "short", day: "numeric" }) : "–";
+  return (
+    <div className="callout info order-track" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+      <div className="row-between">
+        <strong>
+          Order {o.units} units · {o.from} → {o.to}
+        </strong>
+        <Status tone={ORDER_TONE[o.orderStatus ?? "approved"] ?? "neutral"}>{o.orderStatusText ?? o.orderStatus}</Status>
+      </div>
+      <span className="small ink-2">
+        Expected {expected} · {o.id}
+      </span>
+      <span className="small">
+        {o.decision ? (
+          <>
+            <Origin by={o.decidedBy === "agent" ? "agent" : "rules"} label={o.decidedBy === "agent" ? "Order agent" : "Order rules"} compact />{" "}
+            <Status tone={CHECK_TONE[o.decision] ?? "neutral"}>{o.status.split(":")[0]}</Status> {o.reason}
+          </>
+        ) : (
+          <span className="muted">The order agent checks it this evening.</span>
+        )}
+      </span>
+      {o.messageDraft && (
+        <details>
+          <summary className="small">Draft to {o.messageTo}</summary>
+          <p className="small ink-2" style={{ whiteSpace: "pre-wrap" }}>{o.messageDraft}</p>
+        </details>
+      )}
+      {o.request && (
+        <details>
+          <summary className="small">
+            <Origin by={o.request.decidedBy === "agent" ? "agent" : "rules"} label={o.request.decidedBy === "agent" ? "Order agent" : "Order rules"} compact />{" "}
+            Request to {o.request.to}: {o.request.subject}
+          </summary>
+          <p className="small ink-2" style={{ whiteSpace: "pre-wrap" }}>{o.request.body}</p>
+          <p className="small muted">Drafted for procurement to send. Nothing is sent from here.</p>
+        </details>
+      )}
+      {canRecord && (o.orderStatus === "approved" || o.orderStatus === "placed" || o.orderStatus === "in_transit" || o.orderStatus === "delayed") && (
+        <div className="row" style={{ gap: 8 }}>
+          {o.orderStatus === "approved" ? (
+            <button className="btn" onClick={() => void live.recordOrder(o.id, "placed")}>Record as placed</button>
+          ) : (
+            <button className="btn" onClick={() => void live.recordOrder(o.id, "delivered")}>Record as received</button>
+          )}
+          <span className="small muted">Records what procurement did with the supplier.</span>
+        </div>
+      )}
+    </div>
+  );
+}

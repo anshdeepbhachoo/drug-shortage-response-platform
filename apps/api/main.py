@@ -60,6 +60,15 @@ class PlanDrug(BaseModel):
     planner: str = Field(default="auto", pattern="^(auto|model|rules)$")
 
 
+class OrderStatus(BaseModel):
+    by: str = Field(min_length=1)
+    role: str
+    status: str = Field(pattern="^(placed|in_transit|delayed|delivered|cancelled)$")
+    expected_date: date | None = None  # the supplier's confirmed date, when placing
+    note: str | None = None
+    as_of: date | None = None
+
+
 class RunFollowup(BaseModel):
     now: datetime
     as_of: date | None = None
@@ -194,12 +203,28 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
         return guard(lambda: plan_for_drug(write_engine, read_engine, din, body.as_of, body.by,
                                            body.site_id, llm=llm, planner=body.planner))
 
+    @app.post("/api/orders/{order_id}/status")
+    def order_status(order_id: str, body: OrderStatus):
+        """A person records what happened to an approved order (placed, received, ...). Nothing is sent."""
+
+        from services.agents.order_agent import OrderStatusError, record_order_status
+
+        try:
+            at = datetime.combine(body.as_of, time(12)) if body.as_of else None
+            return guard(lambda: record_order_status(write_engine, order_id, body.status, body.by,
+                                                     UI_ROLES.get(body.role, body.role), body.expected_date, at, body.note))
+        except OrderStatusError as error:
+            raise HTTPException(409, str(error))
+
     @app.post("/api/followup/run")
     def run_followup_check(body: RunFollowup):
         from services.agents.followup_db import run_followup
+        from services.agents.order_agent import resolve_model, run_order_followup
 
         def run():
-            actions = run_followup(write_engine, PostgresData(read_engine, as_of=body.as_of), body.now)
+            data = PostgresData(read_engine, as_of=body.as_of)
+            actions = run_followup(write_engine, data, body.now)
+            actions += run_order_followup(write_engine, data, body.now, resolve_model(llm))
             return [action.model_dump(mode="json") for action in actions]
         return guard(run)
 
