@@ -10,7 +10,7 @@ import {
   siteName,
   applyLiveData,
 } from "../data/mock";
-import { api, type DaySummary, type FollowUp, type LiveState, type OrderStatus, type Planner } from "./api";
+import { api, type DaySummary, type FollowUp, type LiveState, type Notification, type OrderStatus, type Planner } from "./api";
 import type { AuditEntry, Draft, Email, Plan, Role, StockLine, SupplyEvent } from "./types";
 
 export const STEPS = [
@@ -45,6 +45,7 @@ export interface State {
     loadedDays: string[];
     dayReports: Record<string, DaySummary>;
     followups: FollowUp[];
+    notifications: Notification[];
   } | null;
 }
 
@@ -265,6 +266,7 @@ function reducer(state: State, action: Action): State {
         loadedDays: data.loadedDays ?? [],
         dayReports: data.dayReports ?? {},
         followups: data.followups ?? [],
+        notifications: data.notifications ?? [],
       },
       step: 0,
       clockMin: 0,
@@ -417,6 +419,10 @@ export interface LiveControls {
   planDrug: (din: string, siteId?: string) => Promise<string | null>;
   /** Procurement / supply manager: record what happened to an approved order (placed, received). */
   recordOrder: (orderId: string, status: OrderStatus) => Promise<void>;
+  releaseOrder: (orderId: string) => Promise<void>;
+  /** Escalate an approved order or transfer; code picks who receives it. */
+  escalate: (objectId: string, message: string) => Promise<void>;
+  readNotification: (id: string) => Promise<void>;
   lastDay: DaySummary | null;
   clear: () => void;
 }
@@ -539,6 +545,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const current = stateRef.current;
       await api.orderStatus(orderId, { by: USERS[current.role].name, role: current.role, status, as_of: current.live?.asOf });
       return `Order ${orderId} recorded as ${status === "delivered" ? "received" : status}.`;
+    }),
+    releaseOrder: (orderId) => run("Releasing the order", async () => {
+      const current = stateRef.current;
+      const result = await api.releaseOrder(orderId, { by: USERS[current.role].name, role: current.role, as_of: current.live?.asOf });
+      const last = result.attempts[result.attempts.length - 1];
+      return last ? `Order ${orderId}: ${last.note}` : `Order ${orderId} released.`;
+    }),
+    escalate: (objectId, message) => run("Escalating", async () => {
+      const current = stateRef.current;
+      const result = await api.escalate(objectId, { by: USERS[current.role].name, role: current.role, message, as_of: current.live?.asOf });
+      const word: Record<string, string> = { procurement: "procurement", supply_manager: "the supply manager", pharmacist: "the site pharmacist" };
+      return `Escalated to ${word[result.to_role] ?? result.to_role}. It is on their overview.`;
+    }),
+    readNotification: (id) => run("Marking it read", async () => {
+      const current = stateRef.current;
+      await api.readNotification(id, { by: USERS[current.role].name, role: current.role, as_of: current.live?.asOf });
     }),
     lastDay,
     clear: () => { setError(null); setNotice(null); },

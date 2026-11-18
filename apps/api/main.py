@@ -69,6 +69,25 @@ class OrderStatus(BaseModel):
     as_of: date | None = None
 
 
+class ReleaseOrder(BaseModel):
+    by: str = Field(min_length=1)
+    role: str
+    as_of: date | None = None
+
+
+class Escalation(BaseModel):
+    by: str = Field(min_length=1)
+    role: str
+    message: str = Field(min_length=1, max_length=1000)
+    as_of: date | None = None
+
+
+class NotificationRead(BaseModel):
+    by: str = Field(min_length=1)
+    role: str
+    as_of: date | None = None
+
+
 class RunFollowup(BaseModel):
     now: datetime
     as_of: date | None = None
@@ -215,6 +234,49 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
                                                      UI_ROLES.get(body.role, body.role), body.expected_date, at, body.note))
         except OrderStatusError as error:
             raise HTTPException(409, str(error))
+
+    @app.post("/api/orders/{order_id}/release")
+    def release(order_id: str, body: ReleaseOrder):
+        """Procurement releases an order the orchestrator held (above the auto-submit limit); it is then placed
+        through the supplier's channel. Simulated unless ORDER_SUBMISSION=live."""
+
+        from services.agents.order_agent import resolve_model
+        from services.agents.ordering.orchestrator import ReleaseError, release_order
+
+        try:
+            at = datetime.combine(body.as_of, time(12)) if body.as_of else None
+            attempts = guard(lambda: release_order(write_engine, PostgresData(read_engine, as_of=body.as_of), order_id,
+                                                   body.by, UI_ROLES.get(body.role, body.role), at,
+                                                   resolve_model(None)))
+        except ReleaseError as error:
+            raise HTTPException(409, str(error))
+        return {"order_id": order_id, "attempts": [{k: a[k] for k in ("channel", "target", "status", "external_ref", "note")}
+                                                   for a in attempts]}
+
+    @app.post("/api/escalations/{object_id}")
+    def escalate_item(object_id: str, body: Escalation):
+        """A person escalates an approved order or transfer to the role that acts on it (code picks the role:
+        services/agents/escalations.py). It shows on that role's overview as a notification."""
+
+        from services.agents.escalations import EscalationError, escalate
+
+        try:
+            at = datetime.combine(body.as_of, time(12)) if body.as_of else None
+            return guard(lambda: escalate(write_engine, object_id, body.by, UI_ROLES.get(body.role, body.role),
+                                          body.message, at))
+        except EscalationError as error:
+            raise HTTPException(409, str(error))
+
+    @app.post("/api/notifications/{notification_id}/read")
+    def read_notification(notification_id: str, body: NotificationRead):
+        from services.agents.escalations import EscalationError, mark_read
+
+        try:
+            at = datetime.combine(body.as_of, time(12)) if body.as_of else None
+            guard(lambda: mark_read(write_engine, notification_id, body.by, UI_ROLES.get(body.role, body.role), at))
+        except EscalationError as error:
+            raise HTTPException(409, str(error))
+        return {"read": notification_id}
 
     @app.post("/api/followup/run")
     def run_followup_check(body: RunFollowup):

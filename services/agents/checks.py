@@ -1,6 +1,6 @@
 import re
 
-from services.agents.orders import check_order
+from services.agents.orders import check_combined, check_order
 from services.agents.schemas import PlanOption
 
 
@@ -149,6 +149,7 @@ def check_options(
     transfer:   the transfer rules (check_transfer).
     order:      the order rules (orders.check_order); order_context holds
                 {"suppliers", "today", "min_arrival_days"}.
+    transfer_order: both, together (orders.check_combined).
     substitute: only from the pre-approved substitution table (check_substitute).
     conserve:   nothing to compute; a clinical judgement, chosen by a person.
     escalate:   a hand-off to a person; nothing to compute.
@@ -161,11 +162,13 @@ def check_options(
             problems = check_transfer(option, stock, shortfall, reserve_days=reserve_days)
         elif option.type == "substitute":
             problems = check_substitute(option, drug_din, approved_substitutes or set())
-        elif option.type == "order":
+        elif option.type in ("order", "transfer_order"):
             if order_context is None:
                 problems = ["Order options need supplier and lead-time data to be checked."]
-            else:
+            elif option.type == "order":
                 problems = check_order(option, stock, shortfall, **order_context)
+            else:
+                problems = check_combined(option, stock, shortfall, reserve_days=reserve_days, **order_context)
         else:
             problems = []
         if problems:

@@ -159,7 +159,7 @@ def living_event(engine: Engine, din: str) -> str | None:
 def plan_needs_redo(engine: Engine, data, event_id: str, alert: dict) -> str | None:
     """Why the alert's current plan no longer holds with today's stock, or None if it still does."""
 
-    from services.agents.approvals import _options, recheck_order, recheck_transfer
+    from services.agents.approvals import _options, option_kind, recheck_combined, recheck_order, recheck_transfer
 
     with engine.connect() as conn:
         plan = conn.execute(text("""
@@ -188,10 +188,12 @@ def plan_needs_redo(engine: Engine, data, event_id: str, alert: dict) -> str | N
         return None  # nothing could be verified; replanning on the same facts gives the same answer
     today = getattr(data, "as_of", None) or date.today()
     for actions in candidates:
-        kind = actions[0]["type"] if actions else None
+        kind = option_kind(actions) if actions else None
         if kind == "transfer" and recheck_transfer(data, alert["din"], actions, plan.detail):
             continue
         if kind == "order" and recheck_order(data, alert["din"], actions, today):
+            continue
+        if kind == "transfer_order" and recheck_combined(data, alert["din"], actions, plan.detail, today):
             continue
         return None  # this option still holds
     return "plan no longer safe with today's stock"

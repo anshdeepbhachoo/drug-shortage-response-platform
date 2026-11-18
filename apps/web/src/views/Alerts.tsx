@@ -256,12 +256,173 @@ function AlertDetail({ a, go }: { a: ReturnType<typeof useAlerts>[number]; go: G
 const ORDER_TONE: Record<string, Tone> = { approved: "warn", placed: "good", in_transit: "good", delayed: "warn", delivered: "good", cancelled: "crit" };
 const CHECK_TONE: Record<string, Tone> = { wait: "good", close: "good", nudge: "warn", escalate: "crit", replan: "crit" };
 
+const REPLY_WORD: Record<string, string> = {
+  confirmed: "Confirmed",
+  partial: "Partial",
+  delayed: "Delayed",
+  backordered: "Backordered",
+  cancelled: "Cancelled",
+  question: "Question",
+  unrelated: "Unrelated",
+};
+const SUBMIT_WORD: Record<string, string> = {
+  accepted: "Placed",
+  rejected: "Rejected",
+  failed: "Not submitted",
+  held: "Held for release",
+  ready_to_send: "Email ready",
+  escalated: "Escalated",
+};
+const SUBMIT_TONE: Record<string, Tone> = {
+  accepted: "good", rejected: "crit", failed: "crit", held: "warn", ready_to_send: "warn", escalated: "crit",
+};
+const SUB_AGENT: Record<string, string> = {
+  sap_erp: "SAP sub-agent", edi_x12: "EDI sub-agent", supplier_portal: "Portal sub-agent", email: "Email sub-agent",
+};
+const OUTCOME_WORD: Record<string, string> = {
+  accepted: "order placed",
+  handed_to_person: "handed to procurement",
+  try_other_channel: "try another channel",
+  needs_person: "a person must act",
+  not_submitted: "not submitted",
+};
+
+/** What the order orchestrator agent did: each hand-off to a channel sub-agent (who chose it and why), how
+ * the sub-agent read the system's answer, and the exact payload built for that system. */
+function Submissions({ order: o }: { order: FollowUp }) {
+  const { state, live } = useStore();
+  const attempts = o.submissions ?? [];
+  if (!attempts.length) return null;
+  const last = attempts[attempts.length - 1];
+  const canRelease = last.status === "held" && (state.role === "procurement" || state.role === "supply") && live.busy === null;
+  const summary = o.orchestration;
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <details>
+        <summary className="small">
+          How it was placed: {attempts.length} step{attempts.length > 1 ? "s" : ""}
+          {summary ? (summary.decided_by === "agent" ? ", by the orchestrator agent" : ", by the orchestrator rules") : ""}
+        </summary>
+      <div className="stack" style={{ gap: 4, paddingLeft: 8, marginTop: 4 }}>
+      {summary && (
+        <span className="small">
+          <Origin by={summary.decided_by === "agent" ? "agent" : "rules"}
+            label={summary.decided_by === "agent" ? "Order orchestrator agent" : "Order orchestrator rules"} compact />{" "}
+          {summary.summary}
+        </span>
+      )}
+      {attempts.map((a, i) => (
+        <details key={i}>
+          <summary className="small">
+            <Origin by={a.chosenBy === "agent" ? "agent" : "rules"}
+              label={a.chosenBy === "agent" ? "Chosen by the orchestrator agent" : "Chosen by the orchestrator rules"} compact />{" "}
+            <Status tone={SUBMIT_TONE[a.status] ?? "neutral"}>{SUBMIT_WORD[a.status] ?? a.status}</Status>{" "}
+            {SUB_AGENT[a.channel] ? `${SUB_AGENT[a.channel]} → ${a.target}` : a.target}
+            {a.externalRef ? ` · ref ${a.externalRef}` : ""}
+          </summary>
+          <div className="stack" style={{ gap: 4, paddingLeft: 4 }}>
+            {a.reason && <span className="small ink-2">Brief: {a.reason}</span>}
+            {a.note && <span className="small ink-2">System answered: {a.note}</span>}
+            {a.report && (
+              <span className="small">
+                <Origin by={a.report.read_by === "agent" ? "agent" : "rules"}
+                  label={a.report.read_by === "agent" ? (SUB_AGENT[a.channel] ?? "Sub-agent") : "Sub-agent rules"} compact />{" "}
+                Read as <b>{OUTCOME_WORD[a.report.outcome] ?? a.report.outcome}</b>: {a.report.summary}
+              </span>
+            )}
+            {a.report?.steps?.length ? (
+              <ol className="small muted" style={{ margin: 0, paddingLeft: 18 }}>
+                {a.report.steps.map((s, j) => <li key={j}>{s}</li>)}
+              </ol>
+            ) : null}
+            {a.payload != null && (
+              <pre className="small ink-2" style={{ whiteSpace: "pre-wrap", overflowX: "auto", maxHeight: 220 }}>
+                {Array.isArray((a.payload as { segments?: string[] }).segments)
+                  ? (a.payload as { segments: string[] }).segments.join("~\n")
+                  : JSON.stringify(a.payload, null, 2)}
+              </pre>
+            )}
+            {a.status !== "escalated" && a.status !== "held" && (
+              <p className="small muted">
+                {a.mode === "simulate"
+                  ? "Simulated: the payload was built and checked in code and the system's answer simulated. Nothing left this machine."
+                  : "Sent to the live system."}
+              </p>
+            )}
+          </div>
+        </details>
+      ))}
+      </div>
+      </details>
+      {canRelease && (
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn" onClick={() => void live.releaseOrder(o.id)}>Release to supplier</button>
+          <span className="small muted">Above the auto-submit limit: a person releases it.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One line that says where the order stands with the supplier: placed (where, reference, when), waiting on
+ * procurement, or escalated. The detail is one click away. */
+function placedLine(o: FollowUp): { tone: Tone; label: string; text: string } | null {
+  const attempts = o.submissions ?? [];
+  const when = (at: string) => new Date(at).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+  const placed = attempts.find((a) => a.status === "accepted");
+  if (placed) return { tone: "good", label: "Placed", text: `via ${placed.target}${placed.externalRef ? ` · ref ${placed.externalRef}` : ""} · ${when(placed.at)}` };
+  if (o.orderStatus && o.orderStatus !== "approved") return { tone: "good", label: "Placed", text: `${o.orderStatusText ?? o.orderStatus}, recorded by procurement` };
+  const last = attempts[attempts.length - 1];
+  if (!last) return null;
+  const why = attempts.find((a) => a.report?.outcome === "needs_person")?.report?.summary;
+  if (last.status === "ready_to_send") return { tone: "warn", label: "Waiting on procurement", text: `to send the email to ${o.from}${why ? `. ${why}` : ""}` };
+  if (last.status === "escalated") return { tone: "crit", label: "Escalated to procurement", text: `to place by hand: ${last.note ?? ""}` };
+  if (last.status === "held") return { tone: "warn", label: "Held", text: "for procurement to release (above the auto-submit limit)" };
+  return null;
+}
+
+/** Who a person escalates an order to: whoever acts next. Code on the server decides; this only labels the button. */
+const ESCALATE_ORDER_TO: Partial<Record<string, string>> = {
+  supply: "procurement", pharmacist: "procurement", procurement: "the supply manager",
+};
+
+function EscalateButton({ objectId, to }: { objectId: string; to: string }) {
+  const { live } = useStore();
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  if (!open) {
+    return (
+      <div className="row">
+        <button className="btn" disabled={live.busy !== null} onClick={() => setOpen(true)}>Escalate to {to}</button>
+      </div>
+    );
+  }
+  return (
+    <div className="escalate-box">
+      <label className="small" htmlFor={`esc-${objectId}`}>Escalate to {to}</label>
+      <textarea id={`esc-${objectId}`} rows={3} value={message} placeholder={`What does ${to} need to do?`}
+        onChange={(e) => setMessage(e.target.value)} autoFocus />
+      <div className="row">
+        <button className="btn primary" disabled={!message.trim() || live.busy !== null}
+          onClick={() => void live.escalate(objectId, message).then(() => { setOpen(false); setMessage(""); })}>
+          Send to {to}
+        </button>
+        <button className="btn ghost" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+const REPLY_TONE: Record<string, Tone> = { confirmed: "good", partial: "warn", delayed: "warn", backordered: "crit", cancelled: "crit", question: "warn" };
+
 /** An approved order: where it stands, the order agent's latest check and its request to the supplier.
  * Procurement (or the supply manager) records what happened; nothing is sent from here. */
 function OrderTracking({ order: o }: { order: FollowUp }) {
   const { state, live } = useStore();
   const canRecord = (state.role === "procurement" || state.role === "supply") && live.busy === null;
   const expected = o.expectedBy ? new Date(o.expectedBy).toLocaleDateString("en-CA", { month: "short", day: "numeric" }) : "–";
+  const headline = placedLine(o);
+  const escalateTo = o.orderStatus !== "delivered" && o.orderStatus !== "cancelled" ? ESCALATE_ORDER_TO[state.role] : undefined;
   return (
     <div className="callout info order-track" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
       <div className="row-between">
@@ -270,6 +431,7 @@ function OrderTracking({ order: o }: { order: FollowUp }) {
         </strong>
         <Status tone={ORDER_TONE[o.orderStatus ?? "approved"] ?? "neutral"}>{o.orderStatusText ?? o.orderStatus}</Status>
       </div>
+      {headline && <span className="small"><Status tone={headline.tone}>{headline.label}</Status> {headline.text}</span>}
       <span className="small ink-2">
         Expected {expected} · {o.id}
       </span>
@@ -289,6 +451,26 @@ function OrderTracking({ order: o }: { order: FollowUp }) {
           <p className="small ink-2" style={{ whiteSpace: "pre-wrap" }}>{o.messageDraft}</p>
         </details>
       )}
+      <Submissions order={o} />
+      {(o.replies ?? []).map((r, i) => (
+        <details key={i}>
+          <summary className="small">
+            {r.problems.length ? (
+              <Status tone="crit">Needs a person</Status>
+            ) : (
+              <>
+                <Origin by={r.readBy === "agent" ? "agent" : "rules"} label={r.readBy === "agent" ? "Order agent" : "Scripted reading"} compact />{" "}
+                <Status tone={REPLY_TONE[r.kind ?? ""] ?? "neutral"}>{REPLY_WORD[r.kind ?? ""] ?? r.kind}</Status>
+              </>
+            )}{" "}
+            Reply from {r.from}: {r.problems.length ? r.problems.join("; ") : r.summary}
+          </summary>
+          <p className="small ink-2" style={{ whiteSpace: "pre-wrap" }}>{r.text}</p>
+          <p className="small muted">
+            Received {new Date(r.receivedAt).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}. Supplier text is untrusted; code checked the reading before the order agent used it.
+          </p>
+        </details>
+      ))}
       {o.request && (
         <details>
           <summary className="small">
@@ -309,6 +491,7 @@ function OrderTracking({ order: o }: { order: FollowUp }) {
           <span className="small muted">Records what procurement did with the supplier.</span>
         </div>
       )}
+      {escalateTo && <EscalateButton objectId={o.id} to={escalateTo} />}
     </div>
   );
 }

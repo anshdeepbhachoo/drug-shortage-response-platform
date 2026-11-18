@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from services.agents.checks import check_options
 from services.agents.data_source import default_data
 from services.agents.model_io import LLM, extract_json, serialize
-from services.agents.orders import arrival_days, order_option, with_order_option
+from services.agents.orders import arrival_days, combined_option, order_option, with_order_option
 from services.agents.planning import PLANNING_SYSTEM_PROMPT
 from services.agents.risk import calculate_site_risk, cover_days_by_site
 from services.agents.schemas import PlanOption, PlanSet, SupplyEvent
@@ -556,7 +556,7 @@ def propose_plan(event, gap: dict, data, llm, planning_registry, planner=None, f
     else:
         plan = plan_response(event, gap["delay_days"], gap["cover_days"], gap["risk_sites"], gap["shortfall"],
                              planning_registry, feedback, llm=llm)
-    return with_order_option(plan, order_option_for(event, gap, data))
+    return with_order_option(plan, order_option_for(event, gap, data), combined_option_for(event, gap, data))
 
 
 def _order_inputs(event, gap: dict, data) -> tuple[list[dict], date, int]:
@@ -571,6 +571,15 @@ def order_option_for(event, gap: dict, data) -> PlanOption | None:
     suppliers, today, _ = _order_inputs(event, gap, data)
     return order_option(stock_rows=data.stock(event.drug_din), shortfall=gap["shortfall"], suppliers=suppliers,
                         today=today, delay_days=gap["delay_days"], restore=gap.get("restore", False))
+
+
+def combined_option_for(event, gap: dict, data) -> PlanOption | None:
+    """Code: a transfer that bridges the hospitals until an order arrives, plus the order; or None."""
+
+    suppliers, today, _ = _order_inputs(event, gap, data)
+    return combined_option(stock_rows=data.stock(event.drug_din), shortfall=gap["shortfall"], suppliers=suppliers,
+                           today=today, delay_days=gap["delay_days"], restore=gap.get("restore", False),
+                           reserve_days=gap["cover_days"])
 
 
 def check_plan(event, gap: dict, plan: PlanSet, data) -> tuple[list[PlanOption], dict]:

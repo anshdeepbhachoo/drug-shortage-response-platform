@@ -18,7 +18,7 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from services.agents.approvals import APPROVER_ROLES, shift_order_dates
+from services.agents.approvals import APPROVER_ROLES, option_kind, shift_order_dates
 from services.agents.followup_db import DEFAULT_DEADLINE_HOURS
 from services.agents.db_data import PostgresData
 
@@ -84,7 +84,32 @@ def sites_and_drugs(conn) -> tuple[list[dict], list[dict]]:
     return sites, drugs
 
 
-def stock_lines(conn, data: PostgresData, as_of: date, drugs: list[dict]) -> list[dict]:
+def platform_orders(conn) -> dict[str, dict]:
+    """Purchase orders the platform approved, with where each stands for the stock projections:
+
+    counted: placed (or the supplier confirmed it), so it counts as arriving in the hospital's stock line.
+    failed:  cancelled, or the order agent replanned it (backordered, cancelled or too late): never counted.
+    Approved but not placed yet: counted only in "with the approved plan". Received: the hospital's stock feed
+    has it (the synthetic feed does not know about platform orders, so it disappears from the projection).
+    """
+
+    orders = {r["order_id"]: r for r in _rows(conn, """
+        SELECT o.order_id, o.din, o.site_id, o.qty, o.status, o.expected_date, o.promised_date, s.name AS supplier
+        FROM purchase_order o JOIN supplier s USING (supplier_id) WHERE o.plan_id IS NOT NULL""")}
+    latest: dict[str, dict] = {}
+    for r in _rows(conn, """SELECT object, detail FROM audit_log
+                            WHERE actor = 'order-agent' AND action LIKE 'Order follow-up: %' ORDER BY audit_id"""):
+        latest[r["object"]] = r["detail"]
+    for order_id, o in orders.items():
+        check = latest.get(order_id) or {}
+        confirmed = bool((check.get("supplier") or {}).get("confirmed"))
+        o["failed"] = o["status"] == "cancelled" or check.get("decision") == "replan"
+        o["counted"] = not o["failed"] and (o["status"] in ("placed", "in_transit", "delayed") or
+                                            (confirmed and o["status"] == "approved"))
+    return orders
+
+
+def stock_lines(conn, data: PostgresData, as_of: date, drugs: list[dict], platform: dict[str, dict] | None = None) -> list[dict]:
     refs = {(r["site_id"], r["din"]): r["source_ref"] for r in _rows(conn, """
         SELECT DISTINCT ON (site_id, din) site_id, din, source_ref FROM inventory_snapshot
         WHERE as_of <= :as_of ORDER BY site_id, din, as_of DESC""", as_of=as_of)}
@@ -108,6 +133,12 @@ def stock_lines(conn, data: PostgresData, as_of: date, drugs: list[dict]) -> lis
             if due > first:
                 entry["originalEtaDay"] = (first - as_of).days
             orders_by_site.setdefault(order["site_id"], []).append(entry)
+        for o in (platform or {}).values():
+            if o["din"] == din and o["counted"] and o["expected_date"] >= as_of:
+                late = o["status"] == "delayed" or bool(o["promised_date"] and o["promised_date"] > o["expected_date"])
+                orders_by_site.setdefault(o["site_id"], []).append({
+                    "id": o["order_id"], "qty": o["qty"], "etaDay": (o["expected_date"] - as_of).days,
+                    "supplier": o["supplier"], "status": "delayed" if late else "on-time"})
         for row in data.stock(din):
             site = row["site_id"]
             lines.append({
@@ -207,7 +238,21 @@ def _when(day: date) -> str:
     return day.strftime("%b %d").replace(" 0", " ")
 
 
-def plan_cards(plans: list[dict], as_of: date | None = None) -> list[dict]:
+def _order_projection(plan: dict, action: dict, platform: dict[str, dict] | None) -> dict:
+    """How an approved plan's order counts in "with the approved plan": not at all once it is placed (the
+    hospital's stock line already counts it) or failed (cancelled or replanned), so nothing counts twice."""
+
+    if plan["status"] != "approved" or not platform:
+        return {}
+    order = platform.get(f"PO-{action['action_id']}") or {}
+    if order.get("failed"):
+        return {"projection": "failed"}
+    if order.get("counted"):
+        return {"projection": "in-stock-line"}
+    return {}
+
+
+def plan_cards(plans: list[dict], as_of: date | None = None, platform: dict[str, dict] | None = None) -> list[dict]:
     """One UI plan card per option. Card id "<plan_id>-O<n>" maps back for approve/reject.
     as_of: the stock day being viewed; order arrival days (etaDay) count from it.
 
@@ -220,24 +265,30 @@ def plan_cards(plans: list[dict], as_of: date | None = None) -> list[dict]:
         passed = {i for i, acts in plan["options"].items() if all(a["verified"] for a in acts)}
         for index, actions in sorted(plan["options"].items()):
             first = actions[0]
+            kind = option_kind(actions)
             verified = index in passed
             if passed and not verified:
                 continue
             transfers = [{"from": a["from_site"], "to": a["to_site"], "qty": a["units"]}
                          for a in actions if a["units"] and a["from_site"]]
             today = as_of or plan["created_at"].date()
-            order_lines = [a for a in actions if first["type"] == "order" and a["expected_date"]]
+            order_lines = [a for a in actions if a["type"] == "order" and a["expected_date"]]
+
             if plan["status"] == "pending_approval" and (plan["detail"] or {}).get("planned_on"):
                 # Not approved yet: the lead time starts at approval, as approvals.shift_order_dates does.
                 order_lines = shift_order_dates(order_lines, date.fromisoformat(plan["detail"]["planned_on"]), today)
             orders = [{"qty": a["units"], "to": a["to_site"], "supplier": a["supplier"] or a["supplier_id"],
                        "etaDay": (a["expected_date"] - today).days, "expectedDate": a["expected_date"].isoformat(),
-                       "premiumPct": 0}
+                       "premiumPct": 0, **_order_projection(plan, a, platform)}
                       for a in order_lines]
             # Hospitals this option involves: the ones at risk and any it moves stock between.
             sites = set((plan["detail"] or {}).get("risk_sites") or [])
             sites |= {t["from"] for t in transfers} | {t["to"] for t in transfers} | {o["to"] for o in orders}
-            if transfers:
+            if transfers and orders:
+                latest = max(a["expected_date"] for a in order_lines)
+                cost = "Courier transfer ≈ $0, plus supplier price (not yet quoted)"
+                lead = f"Transfer tomorrow by courier; order expected {_when(latest)} (unconfirmed)"
+            elif transfers:
                 cost, lead = "≈ $0 (courier transfer)", "Tomorrow by courier"
             elif orders:
                 latest = max(a["expected_date"] for a in order_lines)
@@ -251,8 +302,8 @@ def plan_cards(plans: list[dict], as_of: date | None = None) -> list[dict]:
                 "score": round(max(0.1, (0.95 if verified else 0.4) - 0.05 * (index - 1)), 2),
                 "cost": cost,
                 "leadTime": lead,
-                "optionType": first["type"],
-                "chooseRoles": sorted(UI_ROLE_OF[r] for r in APPROVER_ROLES.get(first["type"], set()) if r in UI_ROLE_OF),
+                "optionType": kind,
+                "chooseRoles": sorted(UI_ROLE_OF[r] for r in APPROVER_ROLES.get(kind, set()) if r in UI_ROLE_OF),
                 "explanation": first["reasoning"] or "",
                 "citations": [plan["event_id"], plan["plan_id"]],
                 "status": _option_status(plan, index, verified),
@@ -322,21 +373,49 @@ def _actor(row: dict) -> tuple[str, str]:
     if row["actor_type"] == "agent":
         return "agent", row["actor"]
     if row["actor_type"] == "rule":
+        # The order orchestrator logs its steps as a rule row; when its agent made the call, say so.
+        if "agent" in (detail.get("chosen_by"), detail.get("decided_by")):
+            return "agent", row["actor"]
         return "solver", row["actor"]
     return "system", row["actor"]
+
+
+ORDER_STEPS = ("Order placed via", "Order email ready", "Order rejected by", "Order not submitted", "Order orchestration")
+
+
+def _supplier(supplier_id: str | None) -> str:
+    return " ".join(w.capitalize() for w in (supplier_id or "a supplier").split("-"))
 
 
 def _detail_text(row: dict, site_names: dict[str, str]) -> str:
     detail = row["detail"] or {}
     action = row["action"]
     if action in ("Approved", "Rejected"):
-        what = f"Option {detail['option']} ({detail.get('type', 'plan')})" if detail.get("option") else "Plan"
+        what = f"Option {detail['option']} ({detail.get('type', 'plan').replace('_', ' + ')})" if detail.get("option") else "Plan"
         moves = [a for a in detail.get("actions", []) if a.get("units")]
         if moves:
             name = lambda site: site_names.get(site, site)
-            what += ": " + ", ".join(f"{a['units']} units from {name(a['from_site'])} to {name(a['to_site'])}" for a in moves)
+            what += ": " + ", ".join(
+                f"transfer {a['units']} from {name(a['from_site'])} to {name(a['to_site'])}" if a.get("from_site")
+                else f"order {a['units']} from {_supplier(a.get('supplier_id'))} for {name(a['to_site'])}" for a in moves)
         note = detail.get("note")
         return what + (f'. Note: "{note}"' if note else "")
+    if action.startswith(ORDER_STEPS):
+        text_ = detail.get("summary") or detail.get("note") or ""
+        ref = detail.get("external_ref")
+        if ref and ref not in text_:
+            text_ += f" Reference {ref}."
+        if detail.get("mode") == "simulate" and not action.startswith("Order orchestration"):
+            text_ += " (Simulated: built and checked, nothing was sent.)"
+        return text_.strip()
+    if action == "Order escalated to procurement" or action.startswith("Escalated to"):
+        return detail.get("message", "")
+    if action == "Order request drafted":
+        return f"Message to {detail.get('message_to', 'the supplier')}: \"{detail.get('subject', '')}\". Waiting for a person to send it."
+    if action == "Order held for release":
+        return detail.get("note") or f"{detail.get('qty')} units is over the auto-submit limit; a person must release it."
+    if action == "Notification read":
+        return "Marked a notification as read."
     if action.startswith("Signal pipeline"):
         reason = detail.get("reason")
         return "; ".join(reason) if isinstance(reason, list) else (reason or "")
@@ -351,6 +430,9 @@ def _detail_text(row: dict, site_names: dict[str, str]) -> str:
         return f"Day {detail.get('day')}: " + ", ".join(parts)
     if "problems" in detail:
         return "; ".join(detail["problems"])
+    for key in ("summary", "reason", "message", "note"):    # anything else the agents log: their own words
+        if isinstance(detail.get(key), str) and detail[key]:
+            return detail[key]
     return ""
 
 
@@ -480,8 +562,55 @@ def followups(conn, names: dict[str, str], site_names: dict[str, str]) -> list[d
             # "agent" when the model chose; "rule" or "fallback" when code did.
             "decidedBy": detail.get("decided_by"),
             "reason": detail.get("reason", ""),
+            "messageTo": detail.get("message_to"), "messageDraft": detail.get("message_draft"),
         })
     return result + order_followups(conn, names, site_names)
+
+
+# Backend role -> UI role (who sees the notification).
+ROLE_UI = {"supply_manager": "supply", "procurement": "procurement", "pharmacist": "pharmacist"}
+AGENT_TITLE = {"escalate": "Escalated to you", "nudge": "Reminder: not placed yet"}
+SUBMIT_TITLE = {"ready_to_send": "Order email ready to send", "escalated": "Order needs placing by hand",
+                "held": "Order waiting for your release"}
+
+
+def notifications(conn, items: list[dict]) -> list[dict]:
+    """What needs a person, addressed to the role that acts on it, newest first.
+
+    From the agents: the order and follow-up agents' latest escalation or reminder (code chose the recipient),
+    and orders the orchestrator agent handed to procurement (an email to send, a hold, an escalation).
+    From people: escalations (services/agents/escalations.py). A notification stays until someone in that role
+    marks it read, or (for an order waiting on procurement) until the order is placed."""
+
+    read = {(r["detail"] or {}).get("id") for r in _rows(conn, "SELECT detail FROM audit_log WHERE action = 'Notification read'")}
+    by_id = {f["id"]: f for f in items}
+    out = []
+
+    def add(nid, role, origin, title, body, item, at):
+        if role not in ROLE_UI:
+            return
+        out.append({"id": nid, "toRole": ROLE_UI[role], "from": origin, "title": title, "body": body,
+                    "objectId": item["id"], "kind": item["kind"], "drugId": item["drugId"],
+                    "about": f"{item['drug']}: {item['units']} units, {item['from']} → {item['to']}",
+                    "at": at, "read": nid in read})
+
+    for f in items:
+        if f.get("decision") in AGENT_TITLE and f.get("messageTo") in ROLE_UI and f.get("orderStatus") not in ("delivered", "cancelled"):
+            origin = "Order agent" if f["kind"] == "order" else "Follow-up agent"
+            add(f"{f['id']}:{f['decision']}:{f.get('checkedAt')}", f["messageTo"], origin, AGENT_TITLE[f["decision"]],
+                f.get("messageDraft") or f.get("reason") or "", f, f.get("checkedAt"))
+        last = (f.get("submissions") or [None])[-1]
+        if last and last["status"] in SUBMIT_TITLE and f.get("orderStatus") == "approved":
+            add(f"{f['id']}:submission:{last['at']}", "procurement", "Order orchestrator", SUBMIT_TITLE[last["status"]],
+                last.get("reason") or last.get("note") or "", f, last["at"])
+    for r in _rows(conn, """SELECT audit_id, actor, object, detail, at FROM audit_log
+                            WHERE actor_type = 'human' AND action LIKE 'Escalated to %' ORDER BY audit_id"""):
+        item = by_id.get(r["object"])
+        if item:
+            d = r["detail"] or {}
+            add(f"{r['object']}:escalation:{r['audit_id']}", d.get("to_role"), r["actor"], "Escalated to you",
+                d.get("message", ""), item, r["at"].isoformat())
+    return sorted(out, key=lambda n: n["at"] or "", reverse=True)
 
 
 ORDER_STATUS_WORD = {"approved": "Approved, not placed yet", "placed": "Placed with the supplier", "in_transit": "In transit",
@@ -500,6 +629,17 @@ def order_followups(conn, names: dict[str, str], site_names: dict[str, str]) -> 
     records: dict[str, list[dict]] = {}
     for r in _rows(conn, "SELECT object, action, detail FROM audit_log WHERE actor = 'order-agent' ORDER BY audit_id"):
         records.setdefault(r["object"], []).append(r)
+    # What the order orchestrator agent did with each order: every step, who chose it and why, the sub-agent's
+    # report, and the payload built for that system. Plus the orchestrator's own summary.
+    orchestration = {r["object"]: r["detail"] for r in _rows(conn, """
+        SELECT object, detail FROM audit_log WHERE actor = 'order-orchestrator' AND action = 'Order orchestration'
+        ORDER BY audit_id""")}
+    sent: dict[str, list[dict]] = {}
+    for r in _rows(conn, "SELECT * FROM order_submission ORDER BY order_id, attempt"):
+        sent.setdefault(r["order_id"], []).append({
+            "channel": r["channel"], "target": r["target"], "mode": r["mode"], "status": r["status"],
+            "externalRef": r["external_ref"], "note": r["note"], "at": r["submitted_at"].isoformat(),
+            "payload": r["payload"], "chosenBy": r["chosen_by"], "reason": r["reason"], "report": r["report"]})
     result = []
     for o in orders:
         mine = records.get(o["order_id"], [])
@@ -507,6 +647,10 @@ def order_followups(conn, names: dict[str, str], site_names: dict[str, str]) -> 
         check = next((r for r in reversed(mine) if r["action"].startswith("Order follow-up: ")), None)
         detail = (check or {}).get("detail") or {}
         decision = check["action"].removeprefix("Order follow-up: ") if check else None
+        replies = [{"from": e["sender"], "receivedAt": e["received_at"], "text": e["text"],
+                    "kind": (e.get("reading") or {}).get("kind"), "summary": (e.get("reading") or {}).get("summary"),
+                    "readBy": e.get("read_by"), "problems": e.get("problems") or []}
+                   for r in mine if r["action"].startswith("Order follow-up: ") for e in r["detail"].get("replies") or []]
         result.append({
             "id": o["order_id"], "kind": "order", "drugId": o["din"], "drug": names.get(o["din"], o["din"]),
             "from": o["supplier"], "to": site_names.get(o["site_id"], o["site_id"]), "units": o["qty"],
@@ -517,6 +661,10 @@ def order_followups(conn, names: dict[str, str], site_names: dict[str, str]) -> 
             "status": FOLLOWUP_STATUS.get(decision, decision) if decision else "Not checked yet: follow-up runs each evening",
             "checkedAt": detail.get("at"), "decidedBy": detail.get("decided_by"), "reason": detail.get("reason", ""),
             "messageTo": detail.get("message_to"), "messageDraft": detail.get("message_draft"),
+            "replies": replies,
+            "submissions": sent.get(o["order_id"], []),
+            "orchestration": ({k: orchestration[o["order_id"]].get(k) for k in ("decided_by", "summary", "outcome")}
+                              if o["order_id"] in orchestration else None),
             "request": {"to": request["message_to"], "subject": request["subject"], "body": request["message_draft"],
                         "decidedBy": request["decided_by"]} if request else None,
         })
@@ -539,10 +687,14 @@ def build_state(engine: Engine, as_of: date | None = None) -> dict:
     with engine.connect() as conn:
         sites, drugs = sites_and_drugs(conn)
         names = {d["id"]: d["name"] for d in drugs}
-        stock = stock_lines(conn, data, as_of, drugs)
+        platform = platform_orders(conn)
+        stock = stock_lines(conn, data, as_of, drugs, platform)
         raw_plans = _plans_raw(conn)
         events = supply_events(conn, start, raw_plans, names)
+        tracked = followups(conn, names, {site["id"]: site["name"] for site in sites})
         state = {
+            "followups": tracked,
+            "notifications": notifications(conn, tracked),
             "asOf": as_of.isoformat(),
             "days": [d.isoformat() for d in days],
             # Days whose data has arrived; before that the stock shown is the latest earlier day (or none).
@@ -552,7 +704,7 @@ def build_state(engine: Engine, as_of: date | None = None) -> dict:
             "drugs": drugs,
             "stock": stock,
             "events": events,
-            "plans": plan_cards(raw_plans, as_of),
+            "plans": plan_cards(raw_plans, as_of, platform),
             "emails": emails(conn, start, names),
             "audit": audit_entries(conn, start, {site["id"]: site["name"] for site in sites}),
             "ingestion": ingestion(conn),
@@ -561,7 +713,6 @@ def build_state(engine: Engine, as_of: date | None = None) -> dict:
             "dayReports": {r["object"]: r["detail"] for r in _rows(conn, """
                 SELECT DISTINCT ON (object) object, detail FROM audit_log
                 WHERE action = 'Daily run' ORDER BY object, audit_id DESC""")},
-            "followups": followups(conn, names, {site["id"]: site["name"] for site in sites}),
             "inbox": _inbox_for(as_of),
             "sources": sources(conn, events, raw_plans, stock),
         }

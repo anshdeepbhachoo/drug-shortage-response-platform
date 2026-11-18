@@ -857,3 +857,19 @@ details.sources summary::before, details.why summary::after { font-family: var(-
 .sidebar .origin-legend .origin-human { color: #0b6a5d; }
 .sc-resp { white-space: nowrap; display: flex; align-items: center; gap: 4px; }
 
+
+/* ---------- Escalations: the "For you" panel on the Overview and the escalate box on an order ---------- */
+.for-you { margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
+.for-you-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.for-you-list li { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 10px 0; border-top: 1px solid var(--line); }
+.for-you-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.for-you-text p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.for-you-text .row b { overflow-wrap: anywhere; }
+.for-you-actions { display: flex; gap: 8px; flex: none; }
+.escalate-box { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+.escalate-box textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; padding: 8px 10px; resize: vertical;
+  color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 2px; }
+.escalate-box textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+@media (max-width: 640px) {
+  .for-you-list li { flex-direction: column; }
+}

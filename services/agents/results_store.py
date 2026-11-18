@@ -46,12 +46,14 @@ def _actions(plan_id: str, result: dict) -> list[dict]:
             "problems": json.dumps(rejected[index]) if index in rejected else None,
         }
         none = {"from_site": None, "to_site": None, "units": None, "supplier_id": None, "expected_date": None}
-        if option.get("order_lines"):
-            # One row per order line: to_site is the hospital the order is for; no from_site.
-            lines = [{**none, "to_site": l["site_id"], "units": l["units"], "supplier_id": l["supplier_id"],
-                      "expected_date": l["expected_date"]} for l in option["order_lines"]]
-        else:
-            lines = [{**none, **{k: m[k] for k in ("from_site", "to_site", "units")}} for m in option.get("moves") or []]
+        # One row per move (type transfer) and one per order line (type order: to_site is the hospital the
+        # order is for, no from_site). A combined transfer and order option has both, under one option_index.
+        lines = [{**none, **{k: m[k] for k in ("from_site", "to_site", "units")}, "type": "transfer"}
+                 for m in option.get("moves") or []] if option["type"] != "order" else []
+        lines += [{**none, "to_site": l["site_id"], "units": l["units"], "supplier_id": l["supplier_id"],
+                   "expected_date": l["expected_date"], "type": "order"} for l in option.get("order_lines") or []]
+        if option["type"] not in ("transfer", "order", "transfer_order"):
+            lines = [{**line, "type": option["type"]} for line in lines]
         lines = lines or [none]
         for line_index, line in enumerate(lines):
             rows.append({

@@ -58,6 +58,7 @@ export function applyPlan(lines: StockLine[], plan: Plan, recipientSiteId?: stri
     if (to) to.onHand += t.qty;
   }
   for (const o of plan.orders) {
+    if (o.projection) continue; // already in the stock line (placed) or failed: never counted twice
     const site = state.get(o.to ?? recipientSiteId ?? "");
     if (site) site.arrivals.push({ qty: o.qty, etaDay: o.etaDay });
   }

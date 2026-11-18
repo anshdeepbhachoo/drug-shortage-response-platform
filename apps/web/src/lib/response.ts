@@ -26,6 +26,7 @@ export function stageOf(options: Plan[]): Stage {
 /** What kind of action an approved option is, in operator language. */
 function approvedLabel(option: Plan): string {
   const kind = option.optionType;
+  if (kind === "transfer_order") return "Transfer and order approved";
   if (kind === "order" || (kind !== "transfer" && /\b(order|purchase|expedite)/i.test(option.title))) return "Order approved";
   if (kind === "transfer" || option.transfers.length) return "Transfer approved";
   if (kind === "substitute") return "Substitute approved";

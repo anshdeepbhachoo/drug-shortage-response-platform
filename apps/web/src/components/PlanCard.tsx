@@ -47,7 +47,7 @@ const NON_TRANSFER: Record<string, { moves: string; check: string; checkDetail: 
 /** Who proposed an option: order options are always worked out by the order rules (code), the rest by
  * the rules planner or the planning agent. */
 function proposedBy(plan: Plan): { by: "rules" | "agent"; label: string } {
-  if (plan.optionType === "order" || plan.explanation.startsWith("Order rules")) return { by: "rules", label: "Order rules" };
+  if (plan.optionType === "order" || plan.optionType === "transfer_order" || plan.explanation.startsWith("Order rules")) return { by: "rules", label: "Order rules" };
   if (plan.explanation.startsWith("Rules planner")) return { by: "rules", label: "Rules planner" };
   return { by: "agent", label: "Planning agent" };
 }
@@ -83,10 +83,13 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
   const nonTransfer = kind !== undefined && kind !== "transfer" ? NON_TRANSFER[kind] : undefined;
   // Options that move no stock were checked by the server for what they are; the stock maths does not apply.
   // Planners write site codes ("from B to A"); people read facility names.
+  const moved = `Transfer ${plan.transfers.map((t) => `${t.qty} from ${siteName(t.from)} to ${siteName(t.to)}`).join(", ")}`;
   const title =
-    state.live && plan.transfers.length
-      ? `Transfer ${plan.transfers.map((t) => `${t.qty} from ${siteName(t.from)} to ${siteName(t.to)}`).join(", ")}`
-      : plan.title;
+    state.live && kind === "transfer_order"
+      ? `${moved} now, and order ${plan.orders.map((o) => `${o.qty} for ${siteName(o.to ?? "")} from ${o.supplier}`).join("; ")}`
+      : state.live && plan.transfers.length
+        ? moved
+        : plan.title;
   // Substitutions change what patients receive, so the substitute drug is named explicitly.
   const isSubstitute = plan.optionType === "substitute" || /substitute/i.test(plan.title);
   const substitute = isSubstitute ? drugById(plan.title.match(/\b\d{8}\b/)?.[0] ?? "") : undefined;
@@ -131,7 +134,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
         <div className="plan-cols">
           <div>
             <div className="label" style={{ marginBottom: 8 }}>
-              {kind === "order" ? "Order" : "Transfers"}
+              {kind === "order" ? "Order" : kind === "transfer_order" ? "Transfer now, order to restock" : "Transfers"}
             </div>
             <div className="flow">
               {plan.transfers.map((t, i) => (
@@ -148,6 +151,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
                   <span className="from supplier">{o.supplier}</span>
                   <span className="qty">
                     {o.qty} by {dayLabel(o.etaDay)}
+                    {o.projection === "failed" ? " · failed" : o.projection === "in-stock-line" ? " · placed" : ""}
                   </span>
                   <span className="to">{siteName(o.to ?? event.siteId ?? "")}</span>
                 </div>
