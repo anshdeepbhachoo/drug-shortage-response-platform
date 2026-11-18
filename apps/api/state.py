@@ -18,7 +18,7 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from services.agents.approvals import APPROVER_ROLES
+from services.agents.approvals import APPROVER_ROLES, shift_order_dates
 from services.agents.followup_db import DEFAULT_DEADLINE_HOURS
 from services.agents.db_data import PostgresData
 
@@ -130,8 +130,13 @@ def _plans_raw(conn) -> list[dict]:
         LEFT JOIN decision d ON d.plan_id = p.plan_id
         ORDER BY p.created_at DESC""")
     actions = _rows(conn, """
-        SELECT plan_id, option_index, action_id, type, description, reasoning, from_site, to_site, units, verified
-        FROM plan_action ORDER BY plan_id, option_index, action_id""")
+        SELECT a.plan_id, a.option_index, a.action_id, a.type, a.description, a.reasoning, a.from_site, a.to_site,
+               a.units, a.supplier_id, s.name AS supplier,
+               -- An approved order's date is the purchase order's (its lead time started at approval).
+               COALESCE(po.expected_date, a.expected_date) AS expected_date, a.verified
+        FROM plan_action a LEFT JOIN supplier s USING (supplier_id)
+        LEFT JOIN purchase_order po ON po.source_ref = 'plan:' || a.action_id
+        ORDER BY a.plan_id, a.option_index, a.action_id""")
     by_plan: dict[str, dict[int, list[dict]]] = {}
     for action in actions:
         by_plan.setdefault(action["plan_id"], {}).setdefault(action["option_index"], []).append(action)
@@ -198,8 +203,13 @@ UI_ROLE_OF = {"supply_manager": "supply", "pharmacist": "pharmacist", "procureme
 LEAD_TIME = {"substitute": "A pharmacist decides", "conserve": "Starts when chosen", "escalate": "Hands it to a person"}
 
 
-def plan_cards(plans: list[dict]) -> list[dict]:
+def _when(day: date) -> str:
+    return day.strftime("%b %d").replace(" 0", " ")
+
+
+def plan_cards(plans: list[dict], as_of: date | None = None) -> list[dict]:
     """One UI plan card per option. Card id "<plan_id>-O<n>" maps back for approve/reject.
+    as_of: the stock day being viewed; order arrival days (etaDay) count from it.
 
     Options that failed their checks are left out, so every option shown can be chosen.
     Only a plan where nothing passed shows its options, so the problem is still visible.
@@ -213,17 +223,34 @@ def plan_cards(plans: list[dict]) -> list[dict]:
             verified = index in passed
             if passed and not verified:
                 continue
-            transfers = [{"from": a["from_site"], "to": a["to_site"], "qty": a["units"]} for a in actions if a["units"]]
+            transfers = [{"from": a["from_site"], "to": a["to_site"], "qty": a["units"]}
+                         for a in actions if a["units"] and a["from_site"]]
+            today = as_of or plan["created_at"].date()
+            order_lines = [a for a in actions if first["type"] == "order" and a["expected_date"]]
+            if plan["status"] == "pending_approval" and (plan["detail"] or {}).get("planned_on"):
+                # Not approved yet: the lead time starts at approval, as approvals.shift_order_dates does.
+                order_lines = shift_order_dates(order_lines, date.fromisoformat(plan["detail"]["planned_on"]), today)
+            orders = [{"qty": a["units"], "to": a["to_site"], "supplier": a["supplier"] or a["supplier_id"],
+                       "etaDay": (a["expected_date"] - today).days, "expectedDate": a["expected_date"].isoformat(),
+                       "premiumPct": 0}
+                      for a in order_lines]
             # Hospitals this option involves: the ones at risk and any it moves stock between.
             sites = set((plan["detail"] or {}).get("risk_sites") or [])
-            sites |= {t["from"] for t in transfers} | {t["to"] for t in transfers}
+            sites |= {t["from"] for t in transfers} | {t["to"] for t in transfers} | {o["to"] for o in orders}
+            if transfers:
+                cost, lead = "≈ $0 (courier transfer)", "Tomorrow by courier"
+            elif orders:
+                latest = max(a["expected_date"] for a in order_lines)
+                cost, lead = "Supplier price (not yet quoted)", f"Expected {_when(latest)} (standard lead time, unconfirmed)"
+            else:
+                cost, lead = "No cost estimate", LEAD_TIME.get(first["type"], "Needs a person")
             cards.append({
                 "id": f"{plan['plan_id']}-O{index}", "eventId": plan["event_id"], "drugId": plan["din"],
                 "solverRun": plan["plan_id"], "rank": index,
-                "title": first["description"], "transfers": transfers, "orders": [],
+                "title": first["description"], "transfers": transfers, "orders": orders,
                 "score": round(max(0.1, (0.95 if verified else 0.4) - 0.05 * (index - 1)), 2),
-                "cost": "≈ $0 (courier transfer)" if transfers else "No cost estimate",
-                "leadTime": "Tomorrow by courier" if transfers else LEAD_TIME.get(first["type"], "Needs a person"),
+                "cost": cost,
+                "leadTime": lead,
                 "optionType": first["type"],
                 "chooseRoles": sorted(UI_ROLE_OF[r] for r in APPROVER_ROLES.get(first["type"], set()) if r in UI_ROLE_OF),
                 "explanation": first["reasoning"] or "",
@@ -486,7 +513,7 @@ def build_state(engine: Engine, as_of: date | None = None) -> dict:
             "drugs": drugs,
             "stock": stock,
             "events": events,
-            "plans": plan_cards(raw_plans),
+            "plans": plan_cards(raw_plans, as_of),
             "emails": emails(conn, start, names),
             "audit": audit_entries(conn, start, {site["id"]: site["name"] for site in sites}),
             "ingestion": ingestion(conn),

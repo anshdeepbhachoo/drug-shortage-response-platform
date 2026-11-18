@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from services.agents.checks import check_options
 from services.agents.data_source import default_data
 from services.agents.model_io import LLM, extract_json, serialize
+from services.agents.orders import arrival_days, order_option, with_order_option
 from services.agents.planning import PLANNING_SYSTEM_PROMPT
 from services.agents.risk import calculate_site_risk, cover_days_by_site
 from services.agents.schemas import PlanOption, PlanSet, SupplyEvent
@@ -427,6 +428,8 @@ Transfer requirements:
 - Do not assume that a substitution is clinically appropriate.
 - Substitutions require human pharmacist approval.
 - Transfers require human manager approval.
+- Do not propose purchase orders; code adds an order option when one would
+  arrive in time.
 - Do not execute any action.
 
 {feedback_block}
@@ -539,17 +542,35 @@ def gap_for_event(event, assessment, data, today, restore=False) -> dict:
     if not risk_sites:
         return {"ok": False, "result": _result("no_shortage_detected", "Current inventory covers the estimated delay.",
                                                assessment, delay_days=delay_days, cover_days=cover_days)}
-    return {"ok": True, "delay_days": delay_days, "cover_days": cover_days, "risk_sites": risk_sites, "shortfall": shortfall}
+    return {"ok": True, "delay_days": delay_days, "cover_days": cover_days, "risk_sites": risk_sites, "shortfall": shortfall,
+            "restore": restore, "today": today.isoformat()}
 
 
 def propose_plan(event, gap: dict, data, llm, planning_registry, planner=None, feedback=None) -> PlanSet:
-    """Agent (or the rules planner): up to three options for the gap."""
+    """Agent (or the rules planner): up to three options for the gap. Code then adds an order option when an
+    order would arrive in time (orders.py): quantities, supplier and dates are calculations, not the model's."""
 
     if planner is not None:
-        return planner(event=event, stock_rows=data.stock(event.drug_din), data=data, delay_days=gap["delay_days"],
+        plan = planner(event=event, stock_rows=data.stock(event.drug_din), data=data, delay_days=gap["delay_days"],
                        cover_days=gap["cover_days"], risk_sites=gap["risk_sites"], shortfall=gap["shortfall"])
-    return plan_response(event, gap["delay_days"], gap["cover_days"], gap["risk_sites"], gap["shortfall"],
-                         planning_registry, feedback, llm=llm)
+    else:
+        plan = plan_response(event, gap["delay_days"], gap["cover_days"], gap["risk_sites"], gap["shortfall"],
+                             planning_registry, feedback, llm=llm)
+    return with_order_option(plan, order_option_for(event, gap, data))
+
+
+def _order_inputs(event, gap: dict, data) -> tuple[list[dict], date, int]:
+    suppliers = data.suppliers(event.drug_din) if hasattr(data, "suppliers") else []
+    today = date.fromisoformat(gap["today"]) if gap.get("today") else date.today()
+    return suppliers, today, arrival_days(gap["delay_days"], gap.get("restore", False))
+
+
+def order_option_for(event, gap: dict, data) -> PlanOption | None:
+    """Code: the order option for this gap, or None when no order would arrive in time."""
+
+    suppliers, today, _ = _order_inputs(event, gap, data)
+    return order_option(stock_rows=data.stock(event.drug_din), shortfall=gap["shortfall"], suppliers=suppliers,
+                        today=today, delay_days=gap["delay_days"], restore=gap.get("restore", False))
 
 
 def check_plan(event, gap: dict, plan: PlanSet, data) -> tuple[list[PlanOption], dict]:
@@ -560,8 +581,10 @@ def check_plan(event, gap: dict, plan: PlanSet, data) -> tuple[list[PlanOption],
         str(record["substitute_din"]) for record in data.substitutions(event.drug_din)
         if str(record.get("approved", "")).lower() in {"yes", "true", "1"}
     }
+    suppliers, today, min_arrival = _order_inputs(event, gap, data)
     return check_options(options=plan.options, stock=stock, shortfall=gap["shortfall"], reserve_days=gap["cover_days"],
-                         drug_din=event.drug_din, approved_substitutes=approved_substitutes)
+                         drug_din=event.drug_din, approved_substitutes=approved_substitutes,
+                         order_context={"suppliers": suppliers, "today": today, "min_arrival_days": min_arrival})
 
 
 def retry_feedback(plan: PlanSet, verified: list[PlanOption], rejected: dict, attempt: int) -> str | None:
@@ -592,6 +615,7 @@ def plan_result(event, assessment, gap: dict, plan: PlanSet, verified: list[Plan
         rejected_options=rejected,
         no_perfect_plan=plan.no_perfect_plan,
         retried_after_rejection=retried,
+        planned_on=gap.get("today"),
     )
 
 

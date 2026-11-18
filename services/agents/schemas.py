@@ -30,13 +30,25 @@ class Move(BaseModel):
     units: int = Field(gt=0)
 
 
+class OrderLine(BaseModel):
+    """One site's order from one supplier. Worked out in code (services/agents/orders.py), never by a model."""
+
+    site_id: str
+    supplier_id: str
+    supplier: str
+    units: int = Field(gt=0)
+    expected_date: str  # ISO date: today plus the supplier's lead time
+
+
 class PlanOption(BaseModel):
-    type: Literal["transfer", "substitute", "conserve", "escalate"]
+    type: Literal["transfer", "order", "substitute", "conserve", "escalate"]
     description: str
     moves: list[Move] = Field(default_factory=list)
+    order_lines: list[OrderLine] = Field(default_factory=list)
     reasoning: str
 
 
 class PlanSet(BaseModel):
-    options: list[PlanOption] = Field(min_length=1, max_length=3)
+    # The planner returns up to three options; code may add one order option (orders.with_order_option).
+    options: list[PlanOption] = Field(min_length=1, max_length=4)
     no_perfect_plan: bool

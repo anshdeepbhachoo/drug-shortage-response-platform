@@ -1,5 +1,6 @@
 
 import csv
+import re
 from pathlib import Path
 
 
@@ -114,6 +115,20 @@ class CsvData:
             for order in self._rows("open_orders")
             if order["din"] == din
         ]
+
+    def suppliers(self, din):
+        """Who has supplied this drug, and to which site: one row per (supplier, site)."""
+
+        seen, result = set(), []
+        for order in self._rows("open_orders"):
+            name = (order.get("supplier") or "").strip()
+            key = (name, order["site_id"])
+            if order["din"] != din or not name or key in seen:
+                continue
+            seen.add(key)
+            result.append({"supplier_id": re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-"),
+                           "supplier": name, "site_id": order["site_id"]})
+        return result
 
     def substitutions(self, din):
         return [

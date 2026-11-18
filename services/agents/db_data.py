@@ -165,6 +165,23 @@ class PostgresData:
             for row in rows
         ]
 
+    def suppliers(self, din):
+        """Who has supplied this drug, and to which site (active suppliers only). With as_of, only
+        orders seen on or before that day count."""
+
+        source = "purchase_order o" if self.as_of is None else "purchase_order_snapshot o"
+        day_filter = "TRUE" if self.as_of is None else "o.as_of <= CAST(:as_of AS date)"
+        return self._rows(
+            f"""
+            SELECT DISTINCT o.supplier_id, s.name AS supplier, o.site_id
+            FROM {source} JOIN supplier s USING (supplier_id)
+            WHERE o.din = :din AND s.active AND {day_filter}
+            ORDER BY o.supplier_id, o.site_id
+            """,
+            din=din,
+            as_of=self.as_of,
+        )
+
     # ---------------------------------------------------------
     # Health Canada reference data (agent tools get_shortage_reports and
     # get_drug_product). Dates come back as ISO strings so tool results are JSON.

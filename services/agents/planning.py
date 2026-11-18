@@ -29,6 +29,8 @@ PLANNING RULES:
 - Do not invent a substitute or infer clinical equivalence.
 - A substitution may only reference an existing approved record.
 - If available evidence is insufficient, propose escalation.
+- Do not propose purchase orders. Order options (supplier, quantity, date) are
+  worked out and added by code after you answer.
 - Do not perform arithmetic mentally when a tool or supplied calculation
   provides the value.
 - Do not claim that your proposal has passed independent verification.

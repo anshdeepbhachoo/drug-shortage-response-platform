@@ -69,6 +69,10 @@ export interface PlanOrder {
   etaDay: number;
   supplier: string;
   premiumPct: number;
+  /** The hospital the order is for (live data). The scripted demo uses the alert's hospital. */
+  to?: string;
+  /** ISO date the order is expected (live data: today plus the standard lead time). */
+  expectedDate?: string;
 }
 
 export interface ConstraintCheck {
