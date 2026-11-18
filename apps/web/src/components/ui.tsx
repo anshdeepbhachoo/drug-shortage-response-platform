@@ -2,6 +2,7 @@ import { createContext, useContext, useId, useState, type ReactNode } from "reac
 import { SOURCES, dayLabel } from "../data/mock";
 import { useStore } from "../lib/store";
 import type { Tier } from "../lib/types";
+import { Icon, type IconName } from "./icons";
 
 /* ---------------------------------------------------------------
    Status: colour is never used alone - always an icon and a label.
@@ -58,6 +59,29 @@ export function Explainers({ items }: { items: { title: string; text: ReactNode 
           <span className="label">{String(i + 1).padStart(2, "0")}</span>
           <h4>{it.title}</h4>
           <p>{it.text}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * InfoNotes: two to four short "how this page works" notes, each with an icon.
+ * Used under the page title instead of one long lead paragraph, so the
+ * explanation is easy to scan and sits in its own row.
+ */
+export function InfoNotes({ items }: { items: { icon: IconName; title: string; text: ReactNode }[] }) {
+  return (
+    <div className="info-notes">
+      {items.map((it) => (
+        <div key={it.title} className="info-note">
+          <span className="info-ico">
+            <Icon name={it.icon} size={18} />
+          </span>
+          <div>
+            <h4>{it.title}</h4>
+            <p>{it.text}</p>
+          </div>
         </div>
       ))}
     </div>
