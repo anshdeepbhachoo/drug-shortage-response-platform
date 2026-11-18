@@ -26,10 +26,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           # README documents Python 3.14; setup-python supports this release line.
           python-version: "3.14"
@@ -49,15 +49,17 @@ jobs:
         # Isolated CI checkout is disposable. Do not restore or rewrite history.
         # tests/test_progression may regenerate scenarios/progression (documented in README).
         # Fail only if other tracked paths change.
+        #
+        # Use git diff --name-only HEAD (not porcelain parsing). Porcelain lines like
+        # " M path" were previously mis-parsed so allowlisted progression paths looked
+        # unexpected (leading status letter kept in the path).
         run: |
           set -euo pipefail
           dirty=()
-          while IFS= read -r line; do
-            [ -z "$line" ] && continue
-            path="${line#* }"
-            path="${path# }"
+          while IFS= read -r path; do
+            [ -z "$path" ] && continue
             dirty+=("$path")
-          done < <(git status --porcelain --untracked-files=no)
+          done < <(git diff --name-only HEAD)
           unexpected=()
           for path in "${dirty[@]}"; do
             case "$path" in
@@ -67,8 +69,8 @@ jobs:
           done
           if [ "${#dirty[@]}" -gt 0 ]; then
             echo "Tracked paths modified during tests:"
-            git status --porcelain --untracked-files=no
-            git diff --stat
+            printf '%s\n' "${dirty[@]}"
+            git diff --stat HEAD
           fi
           if [ "${#unexpected[@]}" -gt 0 ]; then
             echo "::error::Unexpected tracked file modifications outside scenarios/progression:"
@@ -90,10 +92,10 @@ jobs:
         working-directory: apps/web
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
@@ -116,7 +118,7 @@ jobs:
       # fetch-depth 0 only so git can resolve the event commit range.
       # Gitleaks is invoked with --log-opts so it does NOT scan full history.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
