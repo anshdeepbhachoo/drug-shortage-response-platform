@@ -4,8 +4,8 @@ Does NOT overwrite mock/. Writes snapshots to scenarios/progression/days/<date>/
 with the same CSV schemas expected by services.agents.data.data.CsvData.
 
 Usage:
-  python generate_progression.py
-  python generate_progression.py --source mock --out scenarios/progression
+  python -m scripts.synthetic.generate_progression
+  python -m scripts.synthetic.generate_progression --source mock --out scenarios/progression
 """
 
 from __future__ import annotations
@@ -561,7 +561,7 @@ def write_report(out: Path, daily_reports: list[dict], ledger: list[dict]) -> No
             "## How to inspect",
             "",
             "```powershell",
-            "python generate_progression.py",
+            "python -m scripts.synthetic.generate_progression",
             "python -c \"from services.agents.data.data import CsvData; "
             "print(CsvData('scenarios/progression/days/2026-11-19').stock('99000001'))\"",
             "```",

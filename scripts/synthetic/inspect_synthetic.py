@@ -2,14 +2,14 @@
 
 Examples (PowerShell, from repo root):
 
-  python make_mock_data.py
-  python generate_progression.py
-  python inspect_synthetic.py summary
-  python inspect_synthetic.py day 2026-11-19
-  python inspect_synthetic.py day 5 --din 99000001
-  python inspect_synthetic.py risk --day 4 --din 99000001
-  python inspect_synthetic.py spare --day 4 --site B --din 99000001 --keep-days 19
-  python inspect_synthetic.py generate
+  python -m scripts.synthetic.make_mock_data
+  python -m scripts.synthetic.generate_progression
+  python -m scripts.synthetic.inspect_synthetic summary
+  python -m scripts.synthetic.inspect_synthetic day 2026-11-19
+  python -m scripts.synthetic.inspect_synthetic day 5 --din 99000001
+  python -m scripts.synthetic.inspect_synthetic risk --day 4 --din 99000001
+  python -m scripts.synthetic.inspect_synthetic spare --day 4 --site B --din 99000001 --keep-days 19
+  python -m scripts.synthetic.inspect_synthetic generate
 """
 
 from __future__ import annotations
@@ -20,13 +20,13 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
-from generate_progression import FOCUS_DIN, NUM_DAYS, START, run_progression
-from make_mock_data import generate as generate_mock
+from scripts.synthetic.generate_progression import FOCUS_DIN, NUM_DAYS, START, run_progression
+from scripts.synthetic.make_mock_data import generate as generate_mock
 from services.agents.data.data import CsvData
 from services.agents.rules.risk import calculate_site_risk, cover_days_by_site
 from services.agents.agents.tools import build_tool_registries
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 MOCK = ROOT / "mock"
 PROGRESSION = ROOT / "scenarios" / "progression"
 PROTECTED_EMAILS = ("clear.txt", "ambiguous.txt", "hostile.txt", "sneaky.txt")
@@ -46,7 +46,7 @@ def resolve_day(value: str) -> Path:
         path = days_root / value
     if not path.exists():
         raise SystemExit(
-            f"Missing snapshot {path}. Run: python generate_progression.py"
+            f"Missing snapshot {path}. Run: python -m scripts.synthetic.generate_progression"
         )
     return path
 
@@ -72,7 +72,7 @@ def cmd_summary(_: argparse.Namespace) -> None:
     if (PROGRESSION / "REPORT.md").exists():
         print(f"report: {PROGRESSION / 'REPORT.md'}")
     print()
-    print("Tip: python inspect_synthetic.py day 5 --din 99000001")
+    print("Tip: python -m scripts.synthetic.inspect_synthetic day 5 --din 99000001")
 
 
 def cmd_day(args: argparse.Namespace) -> None:

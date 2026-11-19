@@ -14,8 +14,8 @@ Safety:
 All DINs are synthetic (9900xxxx). They are NOT Health Canada registrations.
 
 Usage:
-  python make_mock_data.py
-  python make_mock_data.py --out mock
+  python -m scripts.synthetic.make_mock_data
+  python -m scripts.synthetic.make_mock_data --out mock
 """
 
 from __future__ import annotations

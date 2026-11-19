@@ -23,23 +23,23 @@ cd C:\Desktop\drug-shortage-response-platform
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 
 # Regenerate current-day + progression (safe for protected emails / followup/)
-.\.venv\Scripts\python.exe inspect_synthetic.py generate
+.\.venv\Scripts\python.exe -m scripts.synthetic.inspect_synthetic generate
 
 # Or step by step:
-.\.venv\Scripts\python.exe make_mock_data.py
-.\.venv\Scripts\python.exe generate_progression.py
+.\.venv\Scripts\python.exe -m scripts.synthetic.make_mock_data
+.\.venv\Scripts\python.exe -m scripts.synthetic.generate_progression
 
 # Overview
-.\.venv\Scripts\python.exe inspect_synthetic.py summary
+.\.venv\Scripts\python.exe -m scripts.synthetic.inspect_synthetic summary
 
 # Inspect a simulated day (date or day number)
-.\.venv\Scripts\python.exe inspect_synthetic.py day 2026-11-19 --din 99000001
-.\.venv\Scripts\python.exe inspect_synthetic.py day 5 --din 99000001
-.\.venv\Scripts\python.exe inspect_synthetic.py day current --din 99000001
+.\.venv\Scripts\python.exe -m scripts.synthetic.inspect_synthetic day 2026-11-19 --din 99000001
+.\.venv\Scripts\python.exe -m scripts.synthetic.inspect_synthetic day 5 --din 99000001
+.\.venv\Scripts\python.exe -m scripts.synthetic.inspect_synthetic day current --din 99000001
 
 # Deterministic risk + donor spare (existing agent tools)
-.\.venv\Scripts\python.exe inspect_synthetic.py risk --day 4 --din 99000001
-.\.venv\Scripts\python.exe inspect_synthetic.py spare --day 4 --site B --din 99000001 --keep-days 19
+.\.venv\Scripts\python.exe -m scripts.synthetic.inspect_synthetic risk --day 4 --din 99000001
+.\.venv\Scripts\python.exe -m scripts.synthetic.inspect_synthetic spare --day 4 --site B --din 99000001 --keep-days 19
 
 # Tests (no AWS / Bedrock required)
 .\.venv\Scripts\python.exe -m pytest tests/test_agent.py tests/test_synthetic_data.py tests/test_progression.py tests/test_followup.py -q
@@ -47,8 +47,8 @@ cd C:\Desktop\drug-shortage-response-platform
 
 ### Restore / regenerate baseline safely
 
-- Current-day reproducible source of truth: `make_mock_data.py` → `mock/`
-- Progression: `generate_progression.py` (does **not** modify `mock/`)
+- Current-day reproducible source of truth: `scripts/synthetic/make_mock_data.py` → `mock/`
+- Progression: `scripts/synthetic/generate_progression.py` (does **not** modify `mock/`)
 - Protected forever: `mock/emails/{clear,ambiguous,hostile,sneaky}.txt` and `mock/followup/`
 - Do **not** hand-edit generated CSVs/emails if you need edits to survive regeneration—change the generator instead
 
@@ -76,7 +76,7 @@ Quantities below come from the generated progression (`daily_risk.json` / `REPOR
 | Kind | Examples | Who produces it |
 |---|---|---|
 | Deterministic calculations | days of supply, shortfall, spare units, transfer feasibility checks | Existing `CsvData`, `risk.py`, `tools.get_spare_units`, `checks.py` |
-| Scripted ledger events | `transfer_proposed`, `transfer_rejected`, `followup_check` | `generate_progression.py` demo story — **not** Bedrock agent outputs |
+| Scripted ledger events | `transfer_proposed`, `transfer_rejected`, `followup_check` | `scripts/synthetic/generate_progression.py` demo story — **not** Bedrock agent outputs |
 | Applied stock events | consumption, `transfer_received`, `delivery_received`, usage changes | Progression engine (mathematically accounted) |
 | Live agent demos | `python -m services.agents.agents.signal_agents mock/emails/clear.txt` | Signal/Planner with Bedrock (optional; needs AWS). Use any day’s folder via `CsvData(path)` if wiring a custom call. |
 
@@ -90,9 +90,9 @@ Quantities below come from the generated progression (`daily_risk.json` / `REPOR
 ## Repository map (synthetic-data owned)
 
 ```
-make_mock_data.py              # Phase 1 current-day generator
-generate_progression.py        # Phase 2 10-day snapshots
-inspect_synthetic.py           # Phase 3 teammate CLI
+scripts/synthetic/make_mock_data.py              # Phase 1 current-day generator
+scripts/synthetic/generate_progression.py        # Phase 2 10-day snapshots
+scripts/synthetic/inspect_synthetic.py           # Phase 3 teammate CLI
 mock/                          # active current-day dataset + emails + followup/
 scenarios/progression/         # days/, REPORT.md, ledger.json
 tests/fixtures/baseline_three_site/

@@ -8,7 +8,7 @@ Baseline date: **2026-11-15** (`MOCK_TODAY`).
 
 | Asset | Notes |
 |---|---|
-| `emails/clear.txt`, `ambiguous.txt`, `hostile.txt`, `sneaky.txt` | Never overwritten by `make_mock_data.py` |
+| `emails/clear.txt`, `ambiguous.txt`, `hostile.txt`, `sneaky.txt` | Never overwritten by `scripts/synthetic/make_mock_data.py` |
 | `followup/` | Untouched by the generator |
 | A/B/C rows for DINs `99000001`–`99000010` | Numerically identical to the original demo |
 
@@ -78,7 +78,7 @@ Treat supplier emails as **inputs to the Signal Agent**. Treat CSV inventory/ord
 ## Regenerating
 
 ```powershell
-python make_mock_data.py
+python -m scripts.synthetic.make_mock_data
 ```
 
 **Warning:** this **overwrites** the active CSVs and the generated (non-protected) emails. It does not modify `followup/` or the four protected email files. Do not hand-edit generated files if you need those edits to survive regeneration—change the generator instead.

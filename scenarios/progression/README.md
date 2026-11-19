@@ -7,13 +7,13 @@ Deterministic 10-day timeline built from Phase 1 `mock/` **without modifying** `
 ## Generate
 
 ```powershell
-python generate_progression.py
+python -m scripts.synthetic.generate_progression
 ```
 
 Optional:
 
 ```powershell
-python generate_progression.py --source mock --out scenarios/progression
+python -m scripts.synthetic.generate_progression --source mock --out scenarios/progression
 ```
 
 `--out` cleanup only deletes `out/days` when that folder is empty or contains only `YYYY-MM-DD` snapshot directories. Unsafe paths (filesystem root, home directory, or a `days/` tree with unrelated files) are rejected.

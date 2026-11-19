@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from generate_progression import (
+from scripts.synthetic.generate_progression import (
     FOCUS_DIN,
     NUM_DAYS,
     START,

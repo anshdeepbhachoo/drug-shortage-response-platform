@@ -14,7 +14,7 @@ PROTECTED = ("clear.txt", "ambiguous.txt", "hostile.txt", "sneaky.txt")
 
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [PYTHON, str(ROOT / "inspect_synthetic.py"), *args],
+        [PYTHON, "-m", "scripts.synthetic.inspect_synthetic", *args],
         cwd=ROOT,
         capture_output=True,
         text=True,

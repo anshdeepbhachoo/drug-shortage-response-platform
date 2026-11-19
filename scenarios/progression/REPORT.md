@@ -77,7 +77,7 @@ Same-day `usage_change` events apply **before** that day's consumption.
 ## How to inspect
 
 ```powershell
-python generate_progression.py
+python -m scripts.synthetic.generate_progression
 python -c "from services.agents.data.data import CsvData; print(CsvData('scenarios/progression/days/2026-11-19').stock('99000001'))"
 ```
 
