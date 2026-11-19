@@ -24,9 +24,9 @@ from ingestion.synthetic_loader import load_folder  # noqa: E402
 from services.store.approvals import approve_plan  # noqa: E402
 from services.pipeline.daily_run import run_day  # noqa: E402
 from services.data.db_data import PostgresData  # noqa: E402
-from tests.test_agent import FakeModel, assessment, transfer  # noqa: E402
+from tests.agents.test_agent import FakeModel, assessment, transfer  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 URL = os.environ.get("TEST_DATABASE_URL")
 NOV15, NOV16 = date(2026, 11, 15), date(2026, 11, 16)
 DAYS = ROOT / "data" / "synthetic" / "progression" / "days"

@@ -21,7 +21,7 @@ from services.data.data import CsvData
 from services.rules.risk import calculate_site_risk
 from services.agents.tools import build_tool_registries
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 MOCK = ROOT / "data" / "synthetic" / "mock"
 OUT = ROOT / "data" / "synthetic" / "progression"
 

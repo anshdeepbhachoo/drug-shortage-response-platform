@@ -9,7 +9,7 @@ from datetime import datetime
 
 import pytest
 
-from tests.test_daily_run import NOV15, NOV16, URL, engine, plans_for, rows  # noqa: F401  (engine is a fixture)
+from tests.pipeline.test_daily_run import NOV15, NOV16, URL, engine, plans_for, rows  # noqa: F401  (engine is a fixture)
 
 pytestmark = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
 
@@ -19,7 +19,7 @@ from apps.api.main import create_app  # noqa: E402
 from services.pipeline.daily_run import run_day  # noqa: E402
 from services.agents.followup_schemas import FollowUpAction  # noqa: E402
 from services.pipeline.graph.pipeline import AgentPipeline  # noqa: E402
-from tests.test_agent import FakeModel, assessment  # noqa: E402
+from tests.agents.test_agent import FakeModel, assessment  # noqa: E402
 
 EPI = "99000011"
 
@@ -119,7 +119,7 @@ def test_a_follow_up_replan_loops_back_and_never_reuses_the_failed_donor(engine,
 def test_intake_holds_a_hostile_notice_and_hands_a_clean_one_to_the_alert(engine):
     from pathlib import Path
 
-    emails = Path(__file__).resolve().parents[1] / "data" / "synthetic" / "mock" / "emails"
+    emails = Path(__file__).resolve().parents[2] / "data" / "synthetic" / "mock" / "emails"
     model = FakeModel(assessments=[assessment()])
     pipeline = AgentPipeline(engine, engine, llm=model)
 

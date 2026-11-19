@@ -131,7 +131,7 @@ def test_a_combined_option_is_saved_as_transfer_rows_and_order_rows_of_one_optio
 # In the pipeline (real Postgres, the 10-day scenario)
 # ---------------------------------------------------------
 
-from tests.test_daily_run import NOV15, URL, engine, rows as db_rows  # noqa: E402,F401  (engine is a fixture)
+from tests.pipeline.test_daily_run import NOV15, URL, engine, rows as db_rows  # noqa: E402,F401  (engine is a fixture)
 
 db = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
 DRUG = "99000011"
@@ -200,7 +200,7 @@ def test_approving_it_records_the_orders_and_both_agents_follow_it_up(engine, mo
 
 def test_the_order_agent_counts_the_plans_bridge_transfer_as_arriving():
     from services.agents.order_agent import order_facts
-    from tests.test_order_agent import SNAPSHOT, Data, an_order
+    from tests.agents.test_order_agent import SNAPSHOT, Data, an_order
 
     now = datetime(2026, 11, 16, 18)
     without = order_facts(an_order(), Data().stock("x"), SNAPSHOT, now, 0, None)

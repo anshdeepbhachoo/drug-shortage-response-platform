@@ -10,7 +10,7 @@ from services.data.data import CsvData
 from services.rules.rules_planner import rules_planner
 from services.agents.schemas import SupplyEvent
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DAYS = ROOT / "data" / "synthetic" / "progression" / "days"
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
 

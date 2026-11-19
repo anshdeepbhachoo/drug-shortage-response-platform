@@ -9,7 +9,7 @@ from datetime import datetime
 
 import pytest
 
-from tests.test_daily_run import NOV15, NOV16, ROOT, URL, engine, rows  # noqa: F401  (engine is a fixture)
+from tests.pipeline.test_daily_run import NOV15, NOV16, ROOT, URL, engine, rows  # noqa: F401  (engine is a fixture)
 
 pytestmark = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
 

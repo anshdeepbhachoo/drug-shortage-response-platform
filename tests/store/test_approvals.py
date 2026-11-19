@@ -25,9 +25,9 @@ from services.agents.signal_agents import process_email  # noqa: E402
 from services.store.approvals import ApprovalError, approve_plan, pending_plans, reject_plan  # noqa: E402
 from services.data.db_data import PostgresData  # noqa: E402
 from services.store.results_store import save_pipeline_result  # noqa: E402
-from tests.test_agent import FakeModel, assessment  # noqa: E402
+from tests.agents.test_agent import FakeModel, assessment  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 MOCK = ROOT / "data" / "synthetic" / "mock"
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
 URL = os.environ.get("TEST_DATABASE_URL")

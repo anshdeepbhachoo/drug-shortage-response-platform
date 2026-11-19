@@ -32,9 +32,9 @@ from services.data.db_data import PostgresData  # noqa: E402
 from services.store.followup_db import approved_transfers, build_agent, run_followup  # noqa: E402
 from services.agents.followup_schemas import SiteReply  # noqa: E402
 from services.store.results_store import save_pipeline_result  # noqa: E402
-from tests.test_agent import FakeModel, assessment  # noqa: E402
+from tests.agents.test_agent import FakeModel, assessment  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 MOCK = ROOT / "data" / "synthetic" / "mock"
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
 URL = os.environ.get("TEST_DATABASE_URL")

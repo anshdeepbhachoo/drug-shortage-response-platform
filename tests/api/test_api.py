@@ -20,9 +20,9 @@ from sqlalchemy import create_engine  # noqa: E402
 
 from apps.api.main import create_app  # noqa: E402
 from ingestion.synthetic_loader import load_progression  # noqa: E402
-from tests.test_agent import FakeModel, assessment, transfer  # noqa: E402
+from tests.agents.test_agent import FakeModel, assessment, transfer  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DAYS = ROOT / "data" / "synthetic" / "progression" / "days"
 URL = os.environ.get("TEST_DATABASE_URL")
 

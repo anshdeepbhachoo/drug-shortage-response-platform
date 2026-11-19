@@ -20,7 +20,7 @@ from services.agents.order_replies import (
     check_order_reading,
     scenario_replies,
 )
-from tests.test_order_agent import SNAPSHOT, Data, an_order
+from tests.agents.test_order_agent import SNAPSHOT, Data, an_order
 
 NOV16_EVENING = datetime(2026, 11, 16, 18)
 
@@ -214,8 +214,8 @@ def test_every_reply_kind_is_in_the_synthetic_data():
 # In the pipeline (real Postgres, the 10-day scenario)
 # ---------------------------------------------------------
 
-from tests.test_daily_run import URL, engine, rows  # noqa: E402,F401  (engine is a fixture)
-from tests.test_order_agent import FENTANYL, NOV17, NOV18, approved_order, client, tick  # noqa: E402
+from tests.pipeline.test_daily_run import URL, engine, rows  # noqa: E402,F401  (engine is a fixture)
+from tests.agents.test_order_agent import FENTANYL, NOV17, NOV18, approved_order, client, tick  # noqa: E402
 
 db = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
 NOV16 = date(2026, 11, 16)

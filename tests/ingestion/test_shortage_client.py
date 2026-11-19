@@ -18,7 +18,7 @@ from ingestion.shortage_ingest import (
     validate_record,
 )
 
-FIXTURE = Path(__file__).parent / "fixtures" / "shortage_search_page.json"
+FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "shortage_search_page.json"
 
 
 def _fixture_page() -> dict:

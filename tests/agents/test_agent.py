@@ -22,7 +22,7 @@ from services.agents.signal_agents import (
 from services.data.data import CsvData
 from services.rules.security import inspect_supplier_email
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 MOCK = ROOT / "data" / "synthetic" / "mock"
 # Isolated 3-site fixture: exact cover_days / shortfall regression for the
 # original demo. Expanded six-hospital data is exercised in test_synthetic_data.py.

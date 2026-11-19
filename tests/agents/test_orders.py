@@ -22,7 +22,7 @@ from services.agents.orders import ORDER_LEAD_DAYS, check_order, order_option, w
 from services.rules.rules_planner import rules_planner
 from services.agents.schemas import OrderLine, PlanOption, PlanSet, SupplyEvent
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
 TODAY = date(2026, 11, 15)
 DIN = "99000001"

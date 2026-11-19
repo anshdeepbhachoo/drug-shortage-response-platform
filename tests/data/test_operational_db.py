@@ -27,9 +27,9 @@ from ingestion.synthetic_loader import load_folder, load_progression, progressio
 from services.agents.signal_agents import process_email  # noqa: E402
 from services.data.data import CsvData  # noqa: E402
 from services.data.db_data import PostgresData  # noqa: E402
-from tests.test_agent import FakeModel, assessment, transfer  # noqa: E402
+from tests.agents.test_agent import FakeModel, assessment, transfer  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 MOCK = ROOT / "data" / "synthetic" / "mock"
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
 DAYS = ROOT / "data" / "synthetic" / "progression" / "days"

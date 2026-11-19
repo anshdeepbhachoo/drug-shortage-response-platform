@@ -262,7 +262,7 @@ Live mode (Haiku 4.5) produces the same story, except that on Nov 17 the decisio
 
 ---
 
-## 10. Tests (`tests/test_followup.py`)
+## 10. Tests (`tests/agents/test_followup.py`)
 
 They use `FakeModel`, which returns scripted JSON and records every prompt, so no AWS is needed and results are deterministic. They cover:
 

@@ -179,7 +179,7 @@ def test_the_email_sub_agent_writes_the_email_and_its_checks_hold():
 # In the pipeline (real Postgres, the 10-day scenario)
 # ---------------------------------------------------------
 
-from tests.test_daily_run import NOV15, URL, engine, rows  # noqa: E402,F401  (engine is a fixture)
+from tests.pipeline.test_daily_run import NOV15, URL, engine, rows  # noqa: E402,F401  (engine is a fixture)
 
 db = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
 FENTANYL, CISPLATIN, EPINEPHRINE = "99000013", "99000005", "99000011"

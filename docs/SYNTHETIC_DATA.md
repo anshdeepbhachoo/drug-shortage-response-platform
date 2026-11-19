@@ -42,7 +42,7 @@ cd C:\Desktop\drug-shortage-response-platform
 .\.venv\Scripts\python.exe -m scripts.synthetic.inspect_synthetic spare --day 4 --site B --din 99000001 --keep-days 19
 
 # Tests (no AWS / Bedrock required)
-.\.venv\Scripts\python.exe -m pytest tests/test_agent.py tests/test_synthetic_data.py tests/test_progression.py tests/test_followup.py -q
+.\.venv\Scripts\python.exe -m pytest tests/agents/test_agent.py tests/synthetic/test_synthetic_data.py tests/synthetic/test_progression.py tests/agents/test_followup.py -q
 ```
 
 ### Restore / regenerate baseline safely
@@ -96,8 +96,8 @@ scripts/synthetic/inspect_synthetic.py      # Phase 3 teammate CLI
 data/synthetic/mock/                        # active current-day dataset + emails + followup/
 data/synthetic/progression/                 # days/, REPORT.md, ledger.json
 tests/fixtures/baseline_three_site/
-tests/test_synthetic_data.py
-tests/test_progression.py
+tests/synthetic/test_synthetic_data.py
+tests/synthetic/test_progression.py
 docs/SYNTHETIC_DATA.md         # this file
 ```
 

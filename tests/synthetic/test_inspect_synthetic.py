@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 PYTHON = sys.executable
 MOCK = ROOT / "data" / "synthetic" / "mock"
 PROTECTED = ("clear.txt", "ambiguous.txt", "hostile.txt", "sneaky.txt")

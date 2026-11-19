@@ -28,8 +28,8 @@ SNAPSHOT = datetime(2026, 11, 15)
 
 @pytest.fixture(autouse=True)
 def no_supplier_replies(monkeypatch):
-    """These tests follow orders that suppliers never answer (supplier replies: tests/test_order_replies.py) and
-    that people place by hand (the order orchestrator: tests/test_order_orchestrator.py)."""
+    """These tests follow orders that suppliers never answer (supplier replies: tests/agents/test_order_replies.py) and
+    that people place by hand (the order orchestrator: tests/agents/test_order_orchestrator.py)."""
 
     monkeypatch.setenv("ORDER_REPLY_STORY", "none")
     monkeypatch.setenv("ORDER_SUBMISSION", "off")
@@ -170,7 +170,7 @@ def test_bedrock_is_used_when_configured_and_rules_only_when_asked(monkeypatch):
 # In the pipeline (real Postgres, the 10-day scenario)
 # ---------------------------------------------------------
 
-from tests.test_daily_run import NOV15, NOV16, URL, engine, rows  # noqa: E402,F401  (engine is a fixture)
+from tests.pipeline.test_daily_run import NOV15, NOV16, URL, engine, rows  # noqa: E402,F401  (engine is a fixture)
 
 db = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
 FENTANYL = "99000013"

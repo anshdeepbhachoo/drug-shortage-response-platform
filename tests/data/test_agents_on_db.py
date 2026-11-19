@@ -25,9 +25,9 @@ from services.data.data_source import default_data  # noqa: E402
 from services.data.db_data import PostgresData  # noqa: E402
 from services.pipeline.shortage_signals import pending_reports, run_shortage_signals  # noqa: E402
 from services.agents.tools import build_tool_registries  # noqa: E402
-from tests.test_agent import FakeModel, transfer  # noqa: E402
+from tests.agents.test_agent import FakeModel, transfer  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
 URL = os.environ.get("TEST_DATABASE_URL")
 TODAY = date(2026, 11, 15)

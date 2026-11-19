@@ -13,9 +13,9 @@ from services.data.data_source import default_data
 from services.agents.schemas import SupplyEvent
 from services.pipeline.shortage_signals import DEFAULT_SHORTAGE_DAYS, event_from_report
 from services.agents.tools import build_tool_registries
-from tests.test_agent import FakeModel, transfer
+from tests.agents.test_agent import FakeModel, transfer
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
 TODAY = date(2026, 11, 15)
 

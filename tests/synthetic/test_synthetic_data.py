@@ -14,7 +14,7 @@ from services.rules.risk import calculate_site_risk, cover_days_by_site
 from services.agents.schemas import Move, PlanOption
 from services.agents.tools import build_tool_registries
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 MOCK = ROOT / "data" / "synthetic" / "mock"
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
 TODAY = date(2026, 11, 15)

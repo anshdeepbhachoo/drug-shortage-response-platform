@@ -23,7 +23,7 @@ from sqlalchemy import create_engine, text  # noqa: E402
 from ingestion.dpd_client import DpdClient  # noqa: E402
 from ingestion.dpd_ingest import run_ingest as run_dpd_ingest  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 URL = os.environ.get("TEST_DATABASE_URL")
 
 pytestmark = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")

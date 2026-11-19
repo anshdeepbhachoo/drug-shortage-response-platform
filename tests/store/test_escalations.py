@@ -28,8 +28,8 @@ def test_the_order_agent_escalates_to_whoever_can_act():
     assert escalation_role(base | {"margin_days": -1.0}) == "supply_manager"              # runs out first: new plan
 
 
-from tests.test_daily_run import URL, engine, rows  # noqa: E402,F401  (engine is a fixture)
-from tests.test_order_orchestrator import CISPLATIN, EPINEPHRINE, approve, client, scenario  # noqa: E402,F401
+from tests.pipeline.test_daily_run import URL, engine, rows  # noqa: E402,F401  (engine is a fixture)
+from tests.agents.test_order_orchestrator import CISPLATIN, EPINEPHRINE, approve, client, scenario  # noqa: E402,F401
 
 db = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
 
