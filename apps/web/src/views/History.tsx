@@ -34,7 +34,7 @@ function dot(e: AuditEntry) {
   return "S";
 }
 
-export function Audit() {
+export function History() {
   const { state } = useStore();
   const [filter, setFilter] = useState<Filter>("all");
   const rule = FILTERS.find((f) => f.id === filter)!;

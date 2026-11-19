@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, Empty, PageHead, Status } from "../components/ui";
 import { useStore } from "../lib/store";
 
-export function Drafts() {
+export function Messages() {
   const { state, dispatch } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);

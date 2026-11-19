@@ -11,7 +11,7 @@ const runOutLabel = (days: number) => (days >= AXIS_MAX ? "not within 60 days" :
 
 type Key = { drugId: string; siteId: string };
 
-export function RiskBoard({ go }: { go: (view: string, focusEvent?: string) => void }) {
+export function Stock({ go }: { go: (view: string, focusEvent?: string) => void }) {
   const { state } = useStore();
   const projected = withApprovedPlans(state.stock, state.plans, state.events);
 

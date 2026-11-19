@@ -67,7 +67,7 @@ const initials = (from: string) =>
     .slice(0, 2)
     .toUpperCase();
 
-export function Events({ openPlan }: { openPlan?: (eventId: string) => void } = {}) {
+export function SignalReview({ openPlan }: { openPlan?: (eventId: string) => void } = {}) {
   const { state } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<InboxFilter>("all");

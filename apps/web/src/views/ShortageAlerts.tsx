@@ -49,7 +49,7 @@ function useAlerts() {
     .sort((a, b) => (a.worst?.days ?? Infinity) - (b.worst?.days ?? Infinity));
 }
 
-export function Alerts({ go, focusEvent }: { go: Go; focusEvent?: string | null }) {
+export function ShortageAlerts({ go, focusEvent }: { go: Go; focusEvent?: string | null }) {
   const alerts = useAlerts();
   const [picked, setPicked] = useState<string | null>(focusEvent ?? null);
   const focused = alerts.find((a) => a.event.id === focusEvent);
