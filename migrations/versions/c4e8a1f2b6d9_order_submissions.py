@@ -4,7 +4,7 @@ Revision ID: c4e8a1f2b6d9
 Revises: 9d4f6b2e8a13
 Create Date: 2026-11-18 16:00:00.000000
 
-What the order orchestrator agent needs (services/agents/ordering/):
+What the order orchestrator agent needs (services/agents/orders/placement/):
 
 - order_submission: one row per step the orchestrator took to place an approved
   purchase order: a hand-off to a channel sub-agent (the hospital's ERP, EDI, a

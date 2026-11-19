@@ -1,6 +1,6 @@
 # Security
 
-MediFlow is a hackathon project that models hospital drug-shortage workflows. It is not a production clinical system and does not have a formal vulnerability-response program.
+The drug shortage response platform is a hackathon project that models hospital drug-shortage workflows. It is not a production clinical system and does not have a formal vulnerability-response program.
 
 ## Reporting a concern
 
@@ -18,3 +18,4 @@ If you find a security issue (for example an accidentally committed secret or un
 - Synthetic hospital data in this repository is fictional demonstration data.
 - Do not load real patient information into local databases or commits.
 - CI does not use production credentials, AWS accounts, or live hospital systems.
+- Order submission defaults to simulation (no live supplier order). Do not configure live supplier credentials in a shared demo environment without team agreement.

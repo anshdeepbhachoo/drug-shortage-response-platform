@@ -1,8 +1,8 @@
 # Follow-up agent: technical design
 
-Owner: Aryan (Agentic AI lead). Branch: `feat/follow-up-agent`, built on `feat/signal-assessment-agent`.
+Originally owned on `feat/follow-up-agent` (built atop the signal-assessment work). The behaviour described here is part of the integrated application on `main`.
 
-For the agents package as a whole (files, setup, both pipelines) see [`services/agents/README.md`](../services/agents/README.md).
+For the agents package as a whole (files, setup, signal, orders, and follow-up) see [`services/agents/README.md`](../services/agents/README.md). Synthetic follow-up data lives in `data/synthetic/mock/followup/`.
 
 ---
 
@@ -39,7 +39,7 @@ The model can only choose from what Python allows, so even a confused or manipul
 
 ## 3. Data formats
 
-### `mock/followup/transfer_requests.csv`
+### `data/synthetic/mock/followup/transfer_requests.csv`
 
 One row per approved transfer. Loaded into `TransferRequest`.
 
@@ -47,8 +47,8 @@ One row per approved transfer. Loaded into `TransferRequest`.
 |---|---|---|
 | `request_id` | `T-101` | Unique ID |
 | `plan_id` | `P-2026-11-15-01` | The approved plan it came from |
-| `din` | `99000001` | Must exist in `mock/drugs.csv` |
-| `from_site`, `to_site` | `B`, `A` | Site IDs from `mock/sites.csv` |
+| `din` | `99000001` | Must exist in `data/synthetic/mock/drugs.csv` |
+| `from_site`, `to_site` | `B`, `A` | Site IDs from `data/synthetic/mock/sites.csv` |
 | `units` | `150` | > 0 |
 | `approval_status` | `approved` | `pending`, `approved` or `rejected` |
 | `approver_role` | `pharmacy_manager` | Recipient of escalations |
@@ -56,7 +56,7 @@ One row per approved transfer. Loaded into `TransferRequest`.
 
 Runtime-only fields (not in the CSV): `units_confirmed` (default 0), `status` (`open` / `replanned` / `escalated` / `closed`), `last_nudged_at`.
 
-### `mock/followup/replies.json`
+### `data/synthetic/mock/followup/replies.json`
 
 List of site replies. Loaded into `SiteReply`. The text is **untrusted**.
 
@@ -262,7 +262,7 @@ Live mode (Haiku 4.5) produces the same story, except that on Nov 17 the decisio
 
 ---
 
-## 10. Tests (`tests/test_followup.py`)
+## 10. Tests (`tests/agents/test_followup.py`)
 
 They use `FakeModel`, which returns scripted JSON and records every prompt, so no AWS is needed and results are deterministic. They cover:
 
@@ -291,7 +291,6 @@ Run: `.venv/bin/python -m pytest tests -q`
 - **Confirmed units count as arrived** immediately; there is no in-transit state.
 - **Open orders are ignored** for the receiver's cover (conservative).
 - **Linear projection** from one snapshot; real usage varies.
-- **State is in memory.** Requests, nudge counts and history reset each run; a database is needed for real use.
+- **State is in memory in the demo.** On the database, `services/store/followup_db.py` rebuilds requests, nudge counts and history from `audit_log` on each run.
 - **Escalated / replanned requests stop being tracked.** A replan's new transfers would need to become new requests.
-- **Not connected to the UI.** Needs an API layer (e.g. `POST /clock/advance` → `tick`, `GET /followups`) and a "Follow-up" step in the UI demo.
 - **Thresholds are unvalidated** defaults (section 6).

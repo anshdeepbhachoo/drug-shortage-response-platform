@@ -6,16 +6,16 @@ import { USERS, timeLabel } from "./data/mock";
 import { DayControl } from "./components/LiveBar";
 import { STEPS, useStore } from "./lib/store";
 import type { Role } from "./lib/types";
-import { Alerts } from "./views/Alerts";
+import { ShortageAlerts } from "./views/ShortageAlerts";
 import { Approvals } from "./views/Approvals";
-import { Audit } from "./views/Audit";
+import { History } from "./views/History";
 import { DataSources } from "./views/DataSources";
-import { Drafts } from "./views/Drafts";
-import { Events } from "./views/Events";
+import { Messages } from "./views/Messages";
+import { SignalReview } from "./views/SignalReview";
 import { Home } from "./views/Home";
 import { Hospitals } from "./views/Hospitals";
 import { Plans } from "./views/Plans";
-import { RiskBoard } from "./views/RiskBoard";
+import { Stock } from "./views/Stock";
 
 export type ViewId = "home" | "hospitals" | "alerts" | "board" | "events" | "plans" | "approvals" | "drafts" | "audit" | "data";
 
@@ -323,7 +323,7 @@ export function App() {
           />
         )}
         {activeView === "board" && (
-          <RiskBoard
+          <Stock
             go={(v, eventId) => {
               setFocusEvent(eventId ?? null);
               go(v as ViewId);
@@ -331,7 +331,7 @@ export function App() {
           />
         )}
         {activeView === "events" && (
-          <Events
+          <SignalReview
             openPlan={(eventId) => {
               setFocusEvent(eventId);
               go(isLive ? "approvals" : "plans");
@@ -340,7 +340,7 @@ export function App() {
         )}
         {activeView === "plans" && <Plans focusEvent={focusEvent} />}
         {activeView === "alerts" && (
-          <Alerts
+          <ShortageAlerts
             focusEvent={focusEvent}
             go={(v, eventId, optionId) => {
               setFocusEvent(eventId ?? null);
@@ -350,8 +350,8 @@ export function App() {
           />
         )}
         {activeView === "approvals" && <Approvals focusEvent={focusEvent} focusOption={focusOption} />}
-        {activeView === "drafts" && <Drafts />}
-        {activeView === "audit" && <Audit />}
+        {activeView === "drafts" && <Messages />}
+        {activeView === "audit" && <History />}
         {activeView === "data" && <DataSources />}
 
         {touring && <Tour key={activeView} steps={tourSteps} onClose={endTour} />}

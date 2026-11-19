@@ -8,7 +8,7 @@ quarantine, and good rows are upserted, so re-running is safe. Every loaded
 row's source_ref is "snapshot:<id>", pointing at the raw file it came from.
 
 Usage:
-  python -m ingestion.synthetic_loader                       # mock/ (current day)
+  python -m ingestion.synthetic_loader                       # data/synthetic/mock/ (current day)
   python -m ingestion.synthetic_loader --day 2026-11-19      # one progression day
   python -m ingestion.synthetic_loader --progression         # all 10 days, oldest first
 
@@ -35,8 +35,8 @@ from sqlalchemy.engine import Connection, Engine
 from ingestion.lineage import finish_run, get_engine, normalize_din, quarantine, save_snapshot, start_run
 
 ROOT = Path(__file__).resolve().parents[1]
-MOCK = ROOT / "mock"
-PROGRESSION_DAYS = ROOT / "scenarios" / "progression" / "days"
+MOCK = ROOT / "data" / "synthetic" / "mock"
+PROGRESSION_DAYS = ROOT / "data" / "synthetic" / "progression" / "days"
 SOURCE = "synthetic_csv"
 DEFAULT_USAGE_WINDOW = 14  # days each avg_daily_use value is taken to cover
 
@@ -298,7 +298,7 @@ def _load_file(conn: Connection, run_id: int, folder: Path, name: str, table: st
 
 
 def load_folder(engine: Engine, folder: Path, usage_window: int = DEFAULT_USAGE_WINDOW) -> dict[str, int]:
-    """Load one CsvData folder (mock/ or one progression day) in one transaction."""
+    """Load one CsvData folder (data/synthetic/mock/ or one progression day) in one transaction."""
 
     folder = Path(folder)
     stats = {"rows_in": 0, "rows_ok": 0, "rows_quarantined": 0}
@@ -332,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     parser = argparse.ArgumentParser(description="Load synthetic hospital CSVs into the operational tables")
     which = parser.add_mutually_exclusive_group()
-    which.add_argument("--folder", type=Path, help="A CsvData folder (default: mock/)")
+    which.add_argument("--folder", type=Path, help="A CsvData folder (default: data/synthetic/mock/)")
     which.add_argument("--day", help="One progression day, e.g. 2026-11-19")
     which.add_argument("--progression", action="store_true", help="Every progression day, oldest first")
     parser.add_argument("--usage-window", type=int, default=DEFAULT_USAGE_WINDOW, help="Days each avg_daily_use covers")

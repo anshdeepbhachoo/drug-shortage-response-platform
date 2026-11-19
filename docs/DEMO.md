@@ -13,7 +13,7 @@ and a supplier reply the next day.
 1. Stop the API (Ctrl+C), then reset the database and the scenario files:
    ```bash
    .venv/bin/alembic downgrade base && .venv/bin/alembic upgrade head
-   git checkout -- scenarios/progression
+   git checkout -- data/synthetic/progression
    ```
 2. Start the API with Bedrock configured in `.env`, and the web app:
    ```bash
@@ -52,6 +52,6 @@ Checked with the rules fallback (no model) and the full API flow:
 
 ## Where the scripted parts live
 
-- Supplier reply to the epinephrine order: `mock/orders/order_replies.json`, story `mixed` (the default).
-- Supplier systems: `mock/orders/supplier_channels.json`. Meridian goes through SAP.
-  `ORDER_SUBMISSION=simulate` (the default) builds and checks the order but sends nothing.
+- Supplier reply to the epinephrine order: `data/synthetic/mock/orders/order_replies.json`, story `mixed` (the default).
+- Supplier systems: `data/synthetic/mock/orders/supplier_channels.json`. Meridian goes through SAP.
+  `ORDER_SUBMISSION=simulate` (the code default when unset) builds and checks the order but does not submit a live supplier order. Health Canada and optional Bedrock calls are separate.
