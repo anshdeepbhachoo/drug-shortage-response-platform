@@ -7,7 +7,7 @@ manager, who owns the plan, when the supplier can't deliver and the gap needs an
 belongs to the supply manager. Nobody escalates to themselves, and the auditor only reads.
 
 Code decides the target, not the person: ESCALATE_TO. Every escalation and every "read" is in audit_log;
-apps/api/state.py turns them, with what the agents escalated, into each role's notifications.
+apps/api/state/followups.py turns them, with what the agents escalated, into each role's notifications.
 """
 
 from __future__ import annotations
