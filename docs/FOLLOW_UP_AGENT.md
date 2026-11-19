@@ -1,8 +1,8 @@
 # Follow-up agent: technical design
 
-Owner: Aryan (Agentic AI lead). Branch: `feat/follow-up-agent`, built on `feat/signal-assessment-agent`.
+Originally owned on `feat/follow-up-agent` (built atop the signal-assessment work). The behaviour described here is part of the integrated application on `main`.
 
-For the agents package as a whole (files, setup, both pipelines) see [`services/agents/README.md`](../services/agents/README.md).
+For the agents package as a whole (files, setup, signal, orders, and follow-up) see [`services/agents/README.md`](../services/agents/README.md). Synthetic follow-up data lives in `data/synthetic/mock/followup/`.
 
 ---
 

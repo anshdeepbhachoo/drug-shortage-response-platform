@@ -19,7 +19,8 @@ Agents load CSVs through `services.data.data.CsvData` (unchanged). Default agent
 ## Quick start (PowerShell)
 
 ```powershell
-cd C:\Desktop\drug-shortage-response-platform
+# From the repository root (any machine)
+python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 
 # Regenerate current-day + progression (safe for protected emails / followup/)
@@ -44,6 +45,8 @@ cd C:\Desktop\drug-shortage-response-platform
 # Tests (no AWS / Bedrock required)
 .\.venv\Scripts\python.exe -m pytest tests/agents/test_agent.py tests/synthetic/test_synthetic_data.py tests/synthetic/test_progression.py tests/agents/test_followup.py -q
 ```
+
+On macOS/Linux, use `.venv/bin/python` instead of `.\.venv\Scripts\python.exe`. Paths below (`data/synthetic/mock/`, `data/synthetic/progression/`) are relative to the repo root on current `main`.
 
 ### Restore / regenerate baseline safely
 

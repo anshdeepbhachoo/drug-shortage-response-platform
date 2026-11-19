@@ -1,10 +1,10 @@
-# MediFlow
+# Drug Shortage Response Platform
 
-**MediFlow** is an agentic AI platform for hospital drug-shortage detection, coordination, allocation planning, and auditable response (Cognizant BrAInstorm Challenge 2026).
+The drug shortage response platform, built by team **Breaking Good**, is an agentic AI platform for hospital drug-shortage detection, coordination, allocation planning, and auditable response (Cognizant BrAInstorm Challenge 2026).
 
 Takes a hospital network from a drug shortage signal to an approved, auditable response. It loads hospital stock every day, reads supplier emails and Health Canada shortage reports, works out which drugs will run out where, proposes ways to cover the gap, and routes each plan to the right person to approve. AI agents handle the language-heavy work; code does every calculation and safety check; people make every decision.
 
-> **Development branch:** `dev`. Open pull requests against `dev`, not `main`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+> **Current baseline:** `main` holds the latest integrated application. Day-to-day feature work usually branches from and opens pull requests into `dev` when that integration branch is active. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Home:** today's run and a tile for each part of the platform.
 
@@ -32,9 +32,10 @@ Takes a hospital network from a drug shortage signal to an approved, auditable r
 | Rules planner (no AI) | Built; used when no model is configured |
 | Approvals with role rules and stock re-check | Built |
 | Follow-up agent for approved transfers | Built |
+| Orders agent, order replies, and order orchestrator | Built; **simulated** supplier submission by default (`ORDER_SUBMISSION` defaults to `simulate` in code; optional in `.env`) |
+| Escalations and role notifications | Built |
 | API (FastAPI) and web app (React) | Built |
-| Orders agent | In progress |
-| Sending anything (emails, orders, transfers) | Not built on purpose: the platform records decisions, people act |
+| Real outbound email, live ERP/EDI/portal submission, or hospital system integration | Not built on purpose: the platform records decisions and simulates placement; people act |
 
 ## How it fits together
 
@@ -43,17 +44,19 @@ Takes a hospital network from a drug shortage signal to an approved, auditable r
  Synthetic hospital  ├─► ingestion ─► Postgres ─┤
  data and emails ────┘                          └─► daily run ─► stock watch ─► planner ─► code checks
                                                        │            (AI or rules)
-                                                       └─► follow-up on approved transfers
+                                                       ├─► follow-up on approved transfers
+                                                       └─► order agent / orchestrator (simulated channels)
  Web app (apps/web) ◄── API (apps/api) ◄── Postgres
 ```
 
 - **One living alert per drug.** The stock watch raises it; emails and shortage reports add evidence and refresh its plan instead of opening duplicates.
 - **Every plan option is checked in code** before anyone sees it: transfers keep donors above their 14-day floor, substitutes must come from the approved table. Options that fail are never offered.
 - **Approval:** each plan is one decision. Choose one option, or reject the plan with a reason. The supply manager can choose any option except a substitution, which needs a pharmacist.
+- **After approval:** transfers go to follow-up; orders go to the orders agent and (by default) a **simulated** multi-channel orchestrator. Escalations become role notifications on Overview.
 
 ## Orchestration (LangGraph)
 
-The agentic part of the platform is its own pipeline, built with [LangGraph](https://langchain-ai.github.io/langgraph/) in `services/agents/graph/pipeline.py`. Everything an agent or a person decides happens inside it. The rest of the application (ingestion, the daily schedule, stock-watch detection, the database, the API and the UI) only starts it with a signal and resumes it when something happens.
+The agentic part of the platform is its own pipeline, built with [LangGraph](https://langchain-ai.github.io/langgraph/) in `services/pipeline/graph/pipeline.py`. Everything an agent or a person decides happens inside it. The rest of the application (ingestion, the daily schedule, stock-watch detection, the database, the API and the UI) only starts it with a signal and resumes it when something happens.
 
 ### Alert lifecycle: one graph per drug
 
@@ -75,6 +78,7 @@ graph TD;
 	act(act)
 	order(order)
 	follow_up(follow_up)
+	order_follow_up(order_follow_up)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> gap;
 	act -.-> __end__;
@@ -89,12 +93,15 @@ graph TD;
 	follow_up -.-> gap;
 	gap -.-> plan;
 	gap -.-> save;
+	order --> order_follow_up;
+	order_follow_up -.-> __end__;
+	order_follow_up -.-> gap;
 	plan -.-> check;
 	plan -.-> save;
 	save -.-> __end__;
 	save -.-> await_decision;
-	order --> __end__;
 	follow_up -.-> follow_up;
+	order_follow_up -.-> order_follow_up;
 	classDef default fill:#e8f1fb,stroke:#0b5cad,stroke-width:1px,color:#1c2330,line-height:1.2
 	classDef first fill:#ffffff,stroke:#5b6575,color:#1c2330
 	classDef last fill:#ffffff,stroke:#5b6575,color:#1c2330
@@ -107,9 +114,10 @@ graph TD;
 | `check` | Code | Safety checks on every option; loops back to `plan` once with the reasons if no transfer passed |
 | `save` | Code | Saves the alert and plan; continues only if an option passed |
 | `await_decision` | Human | **The graph pauses.** Approve resumes it; a refused approval or new evidence loops back to `gap` |
-| `act` | Code | Routes the approved option: transfer → follow-up, order → orders agent |
-| `order` | Agent | Orders agent (placeholder: the order is approved but not placed yet) |
+| `act` | Code | Routes the approved option: transfer → follow-up, order (or transfer + order) → order |
+| `order` | Agent | Orders agent drafts/follows the approved order; the orchestrator places it through simulated supplier channels unless held for procurement release |
 | `follow_up` | Agent | **Pauses until each evening**, then checks the transfer; loops until done, or back to `gap` to replan without the hospital that failed |
+| `order_follow_up` | Agent | **Pauses until each evening**; the order agent reads supplier replies and checks each order (and the follow-up agent the transfer of a combined option); loops until received, or back to `gap` to replan without that supplier |
 
 ### Intake: one graph per supplier notice
 
@@ -142,11 +150,11 @@ The security screen (code) holds suspicious notices for a person; the assessment
 | A supplier notice arrives | `read_notice` (intake), then `signal` to the drug's alert |
 | Stock watch, a Health Canada report or a person asks for a plan | `signal` |
 | A person approves, rejects, or the approval is refused | `decide` (from the API's approve / reject endpoints) |
-| Each evening | `tick` (follow-up) |
+| Each evening | `tick` (transfer and order follow-up) |
 
 ### The daily schedule
 
-The day itself is a simple LangGraph graph too (`services/agents/graph/daily.py`): it loads data and detects signals in code, then hands every agentic step to the pipeline above.
+The day itself is a simple LangGraph graph too (`services/pipeline/graph/daily.py`): it loads data and detects signals in code, then hands every agentic step to the pipeline above.
 
 ```mermaid
 ---
@@ -178,22 +186,31 @@ graph TD;
 	classDef last fill:#ffffff,stroke:#5b6575,color:#1c2330
 ```
 
-Routing is always decided in code, never by a model, and the code checks, read-only tools, typed handoffs and approval rules are unchanged. `--orchestrator classic` (or `PIPELINE_ORCHESTRATOR=classic`) runs the same steps without LangGraph. Tests: `tests/test_graph_daily.py` (graph and classic give identical results) and `tests/test_agent_pipeline.py` (pausing, resuming, follow-up and replan loops). Diagrams: `python -m services.agents.graph.pipeline --mermaid`.
+Routing is always decided in code, never by a model, and the code checks, read-only tools, typed handoffs and approval rules are unchanged. `--orchestrator classic` (or `PIPELINE_ORCHESTRATOR=classic`) runs the same steps without LangGraph. Tests: `tests/pipeline/test_graph_daily.py` (graph and classic give identical results) and `tests/pipeline/test_agent_pipeline.py` (pausing, resuming, follow-up and replan loops). Diagrams: `python -m services.pipeline.graph.pipeline --mermaid`.
 
 ## Repository layout
 
 ```
-apps/api            FastAPI backend: UI state, approvals, day runs
-apps/web            React + Vite web app
-services/agents     Agents, planner, checks, approvals, follow-up, daily run
-services/agents/graph  LangGraph: the agentic pipeline (pipeline.py) and the daily schedule (daily.py)
-ingestion           Health Canada and synthetic-data loaders, nightly workflow
-migrations          Alembic migrations (raw SQL)
-scenarios/progression  10-day synthetic scenario and inbox schedule
-mock                Single-day mock data and supplier emails
-docker              Postgres init (database roles)
-docs                Project overview, team workflow, data notes
-tests               Python tests
+apps/api                      FastAPI backend: endpoints (main.py) and the UI state builders (state/)
+apps/web                      React + Vite web app (views/ named after the sidebar pages)
+services/
+  agents/                     the AI agents, plus shared bedrock.py, model_io.py, tools.py, schemas.py
+    signals/                  assessment agent, planning agent, process_email / process_event
+    followup/                 transfer follow-up agent and its offline demo
+    orders/                   order options, order agent, supplier replies, placement/ (order
+                              orchestrator and SAP / EDI / portal / email channel sub-agents)
+  rules/                      code checks, risk, rules planner, email security screen, follow-up and order rules
+  data/                       CSV (synthetic) and Postgres data sources
+  store/                      results, approvals, follow-up and order runs on the database, escalations
+  pipeline/                   daily run, shortage signals, graph/ (LangGraph pipeline and daily schedule)
+ingestion                     Health Canada and synthetic-data loaders, nightly workflow
+migrations                    Alembic migrations (raw SQL)
+data/synthetic/mock           current-day synthetic data: CSVs, supplier emails, follow-up and order fixtures
+data/synthetic/progression    10-day synthetic scenario (daily snapshots) and inbox schedule
+scripts/synthetic             synthetic-data generators and inspection CLI
+docker                        Postgres init (database roles)
+docs                          project overview, API, demo script, team workflow, data notes
+tests                         Python tests, grouped like the code (agents, store, pipeline, data, ingestion, api, synthetic)
 ```
 
 ## Getting started
@@ -208,7 +225,7 @@ tests               Python tests
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cd apps/web && npm install && cd ../..
+cd apps/web && npm ci && cd ../..
 ```
 
 ### 2. Configure
@@ -253,22 +270,26 @@ If the page shows a scripted story ("Step 1 of 7"), the API wasn't reachable: ch
 
 Pick who you are with **Viewing as** at the bottom of the sidebar.
 
-| Page | What it shows |
+| Page (sidebar label) | What it shows |
 |---|---|
-| Home | Today's run and its report, plus tiles for hospitals, stock, problems, decisions waiting, follow-up and the inbox |
-| Hospitals | One card per hospital (hover for a summary, click for details) and a drug-by-hospital heatmap |
+| Home / Overview | Today's run and report, tiles for network status, alerts, decisions waiting, follow-up and inbox, plus role notifications |
+| Hospitals / Network Dashboard | One card per hospital (hover for a summary, click for details) and a drug-by-hospital heatmap |
+| Shortage Alerts | Living alerts per drug, evidence, and plan options (can open an option into Approvals) |
 | Stock | Drugs that need attention, one row per drug, and the full heatmap |
-| Problems | Each drug's alert and the evidence behind it (stock watch, emails, reports) |
+| Signal Review (live) / Alerts (demo) | Supplier notices and shortage signals waiting for or already assessed |
 | Plans | Every option the planner proposed, by drug |
 | Approvals | One card per plan: choose an option or reject the plan |
-| History | Every run, AI result, decision and follow-up check |
+| Messages | Draft notices and procurement-facing messages |
+| History | Runs, AI results, decisions, order/follow-up checks and audit trail |
 | Data | Where each number came from: ingestion runs, raw snapshots, quarantined rows |
+
+Use **Viewing as** at the bottom of the sidebar to switch roles (supply manager, pharmacist, procurement, auditor).
 
 ## Running pieces by hand
 
 ```bash
 # One simulated day, end to end (what the Run button does)
-.venv/bin/python -m services.agents.daily_run --day 2026-11-15 --planner rules
+.venv/bin/python -m services.pipeline.daily_run --day 2026-11-15 --planner rules
 
 # Load synthetic hospital data
 .venv/bin/python -m ingestion.synthetic_loader --day 2026-11-19
@@ -282,10 +303,10 @@ Pick who you are with **Viewing as** at the bottom of the sidebar.
 .venv/bin/python -m ingestion.workflow nightly --dry-run
 
 # One supplier email through the signal pipeline
-.venv/bin/python -m services.agents.agent mock/emails/clear.txt
+.venv/bin/python -m services.agents.signals.process data/synthetic/mock/emails/clear.txt
 
 # Plans waiting for approval
-.venv/bin/python -m services.agents.approvals list
+.venv/bin/python -m services.store.approvals list
 ```
 
 ## Tests
@@ -314,11 +335,11 @@ docker stop dsr-test
 - **Supplier emails need the AI.** With no model configured they show as "waiting: reading emails needs the model".
 - **If the AI fails partway through a run** (for example an expired token), plans for that run are not made. Switch the planner to "Rules planning" and run the day again.
 - **The synthetic scenario doesn't react to decisions.** Approved transfers don't show up in later days' stock and hospitals never confirm shipments, so follow-up nudges and then escalates.
-- **`tests/test_progression` regenerates `scenarios/progression`** with Windows line endings. If those files show as changed after running tests, restore them with `git checkout -- scenarios/progression`.
+- **`tests/synthetic/test_progression.py` regenerates `data/synthetic/progression`** with Windows line endings. If those files show as changed after running tests, restore them with `git checkout -- data/synthetic/progression`.
 
 ## Working together
 
-- Branch from `dev` (`feat/...`, `fix/...`, `docs/...`, `chore/...`), keep pull requests small, and merge back into `dev`.
+- Prefer small pull requests. Feature work usually branches from `dev` and targets `dev` when that branch is the active integration line; `main` is the merged baseline reviewers should treat as current.
 - Conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`).
 - New logic comes with tests.
 - Secrets stay in `.env`, which is ignored by git.
@@ -328,9 +349,12 @@ docker stop dsr-test
 
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
-- [Project overview](docs/PROJECT_OVERVIEW.md): problem, users, data sources, design
-- [Team and workflow](docs/TEAM_AND_WORKFLOW.md)
-- [Agents](services/agents/README.md): design rules and the signal and follow-up pipelines
+- [API endpoints](docs/API.md)
+- [Project overview](docs/PROJECT_OVERVIEW.md): problem, users, data sources, what is real vs synthetic
+- [Team and workflow](docs/TEAM_AND_WORKFLOW.md) (includes historical planning notes)
+- [Agents](services/agents/README.md): design rules, signal, orders, follow-up
 - [Follow-up agent](docs/FOLLOW_UP_AGENT.md)
-- [Synthetic data](docs/SYNTHETIC_DATA.md) and [mock data](mock/README.md)
-- [Progression scenario](scenarios/progression/README.md)
+- [Synthetic data](docs/SYNTHETIC_DATA.md), [mock data](data/synthetic/mock/README.md), [progression scenario](data/synthetic/progression/README.md)
+- [40-second demo runbook](docs/DEMO.md)
+- [UI guidelines](apps/web/UI_GUIDELINES.md)
+- [Migrations](migrations/README)
