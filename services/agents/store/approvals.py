@@ -17,9 +17,9 @@ rules are enforced here in code (and the database), never by a model:
 The decision, plan status and an audit entry are written in one transaction.
 Approving executes nothing: it records that a person authorised the option.
 
-  python -m services.agents.approvals list
-  python -m services.agents.approvals approve P-769e347397 --by "Priya Nair" --role pharmacy_manager --note "Confirmed with Northside"
-  python -m services.agents.approvals reject  P-769e347397 --by "Priya Nair" --role pharmacist --note "Clinical team prefers to wait"
+  python -m services.agents.store.approvals list
+  python -m services.agents.store.approvals approve P-769e347397 --by "Priya Nair" --role pharmacy_manager --note "Confirmed with Northside"
+  python -m services.agents.store.approvals reject  P-769e347397 --by "Priya Nair" --role pharmacist --note "Clinical team prefers to wait"
 """
 
 from __future__ import annotations
@@ -35,8 +35,8 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import ProgrammingError
 
-from services.agents.checks import check_transfer
-from services.agents.schemas import Move, PlanOption
+from services.agents.rules.checks import check_transfer
+from services.agents.agents.schemas import Move, PlanOption
 
 # Who may choose each kind of option. The supply manager can choose any option
 # except a substitution, which changes what patients receive and needs a pharmacist.
@@ -165,8 +165,8 @@ def recheck_combined(data, din: str, actions: list[dict], detail: dict | None, t
     """A transfer and order option against today's stock: the same checks it passed when it was made
     (orders.check_combined), with the order's dates as given (already shifted to the approval day)."""
 
-    from services.agents.orders import check_combined
-    from services.agents.schemas import OrderLine
+    from services.agents.agents.orders import check_combined
+    from services.agents.agents.schemas import OrderLine
 
     detail = detail or {}
     stock = {row["site_id"]: {"on_hand": row["on_hand"], "daily_use": row["daily_use"]} for row in data.stock(din)}
@@ -379,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     from ingestion.lineage import get_engine
-    from services.agents.db_data import PostgresData
+    from services.agents.data.db_data import PostgresData
 
     engine = get_engine()
     try:

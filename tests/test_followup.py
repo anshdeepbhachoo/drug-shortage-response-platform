@@ -6,16 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from services.agents.data import CsvData
-from services.agents.followup import (
+from services.agents.data.data import CsvData
+from services.agents.agents.followup import (
     DECISION_SYSTEM_PROMPT,
     READER_SYSTEM_PROMPT,
     FollowUpAgent,
     load_replies,
     load_requests,
 )
-from services.agents.followup_demo import run
-from services.agents.followup_schemas import SiteReply
+from services.agents.agents.followup_demo import run
+from services.agents.agents.followup_schemas import SiteReply
 
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = ROOT / "mock"

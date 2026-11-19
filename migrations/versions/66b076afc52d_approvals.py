@@ -4,7 +4,7 @@ Revision ID: 66b076afc52d
 Revises: 3e358a2c926a
 Create Date: 2026-11-17 04:00:00.000000
 
-What the approval step (services/agents/approvals.py) needs:
+What the approval step (services/agents/store/approvals.py) needs:
 
 - plan_action.option_index: a plan holds alternative options; approving means
   choosing one, so each action records which option it belongs to. Existing

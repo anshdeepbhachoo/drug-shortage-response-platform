@@ -53,7 +53,7 @@ Takes a hospital network from a drug shortage signal to an approved, auditable r
 
 ## Orchestration (LangGraph)
 
-The agentic part of the platform is its own pipeline, built with [LangGraph](https://langchain-ai.github.io/langgraph/) in `services/agents/graph/pipeline.py`. Everything an agent or a person decides happens inside it. The rest of the application (ingestion, the daily schedule, stock-watch detection, the database, the API and the UI) only starts it with a signal and resumes it when something happens.
+The agentic part of the platform is its own pipeline, built with [LangGraph](https://langchain-ai.github.io/langgraph/) in `services/agents/pipeline/graph/pipeline.py`. Everything an agent or a person decides happens inside it. The rest of the application (ingestion, the daily schedule, stock-watch detection, the database, the API and the UI) only starts it with a signal and resumes it when something happens.
 
 ### Alert lifecycle: one graph per drug
 
@@ -146,7 +146,7 @@ The security screen (code) holds suspicious notices for a person; the assessment
 
 ### The daily schedule
 
-The day itself is a simple LangGraph graph too (`services/agents/graph/daily.py`): it loads data and detects signals in code, then hands every agentic step to the pipeline above.
+The day itself is a simple LangGraph graph too (`services/agents/pipeline/graph/daily.py`): it loads data and detects signals in code, then hands every agentic step to the pipeline above.
 
 ```mermaid
 ---
@@ -178,7 +178,7 @@ graph TD;
 	classDef last fill:#ffffff,stroke:#5b6575,color:#1c2330
 ```
 
-Routing is always decided in code, never by a model, and the code checks, read-only tools, typed handoffs and approval rules are unchanged. `--orchestrator classic` (or `PIPELINE_ORCHESTRATOR=classic`) runs the same steps without LangGraph. Tests: `tests/test_graph_daily.py` (graph and classic give identical results) and `tests/test_agent_pipeline.py` (pausing, resuming, follow-up and replan loops). Diagrams: `python -m services.agents.graph.pipeline --mermaid`.
+Routing is always decided in code, never by a model, and the code checks, read-only tools, typed handoffs and approval rules are unchanged. `--orchestrator classic` (or `PIPELINE_ORCHESTRATOR=classic`) runs the same steps without LangGraph. Tests: `tests/test_graph_daily.py` (graph and classic give identical results) and `tests/test_agent_pipeline.py` (pausing, resuming, follow-up and replan loops). Diagrams: `python -m services.agents.pipeline.graph.pipeline --mermaid`.
 
 ## Repository layout
 
@@ -268,7 +268,7 @@ Pick who you are with **Viewing as** at the bottom of the sidebar.
 
 ```bash
 # One simulated day, end to end (what the Run button does)
-.venv/bin/python -m services.agents.daily_run --day 2026-11-15 --planner rules
+.venv/bin/python -m services.agents.pipeline.daily_run --day 2026-11-15 --planner rules
 
 # Load synthetic hospital data
 .venv/bin/python -m ingestion.synthetic_loader --day 2026-11-19
@@ -282,10 +282,10 @@ Pick who you are with **Viewing as** at the bottom of the sidebar.
 .venv/bin/python -m ingestion.workflow nightly --dry-run
 
 # One supplier email through the signal pipeline
-.venv/bin/python -m services.agents.agent mock/emails/clear.txt
+.venv/bin/python -m services.agents.agents.signal_agents mock/emails/clear.txt
 
 # Plans waiting for approval
-.venv/bin/python -m services.agents.approvals list
+.venv/bin/python -m services.agents.store.approvals list
 ```
 
 ## Tests

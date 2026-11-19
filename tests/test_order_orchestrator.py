@@ -18,10 +18,10 @@ from datetime import date, datetime
 
 import pytest
 
-from services.agents.model_io import extract_json
-from services.agents.ordering.channels import CHANNELS, OrderContext
-from services.agents.ordering.orchestrator import load_routing, route
-from services.agents.ordering.subagents import ChannelAgent
+from services.agents.agents.model_io import extract_json
+from services.agents.agents.ordering.channels import CHANNELS, OrderContext
+from services.agents.agents.ordering.orchestrator import load_routing, route
+from services.agents.agents.ordering.subagents import ChannelAgent
 
 ROUTING = load_routing()
 
@@ -92,7 +92,7 @@ def test_a_payload_that_does_not_say_what_was_approved_is_never_submitted(channe
 
 
 def test_a_target_can_reject_and_live_mode_needs_a_real_connector():
-    from services.agents.ordering.channels import LiveConnectorMissing
+    from services.agents.agents.ordering.channels import LiveConnectorMissing
 
     c = ctx("northgate-labs")
     answer = CHANNELS["supplier_portal"].submit(CHANNELS["supplier_portal"].prepare(c), c, "simulate")
@@ -202,7 +202,7 @@ def client(engine):
 def approve(engine, din, kind, role):
     """Run Nov 15 on rules (once) and approve the drug's option of that kind. Returns the purchase order ids."""
 
-    from services.agents.daily_run import run_day
+    from services.agents.pipeline.daily_run import run_day
 
     if not rows(engine, "SELECT 1 FROM audit_log WHERE action = 'Daily run'"):
         run_day(engine, engine, NOV15, planner="rules", inbox={})
@@ -264,8 +264,8 @@ def place(engine, din, kind, role, llm):
 
     import os
 
-    from services.agents.db_data import PostgresData
-    from services.agents.ordering.orchestrator import submit_orders
+    from services.agents.data.db_data import PostgresData
+    from services.agents.agents.ordering.orchestrator import submit_orders
 
     os.environ["ORDER_SUBMISSION"] = "off"
     try:
@@ -334,7 +334,7 @@ def test_the_erp_places_the_order_half_of_a_combined_option(engine, scenario):
 
 @db
 def test_a_large_order_is_held_until_procurement_releases_it(engine, scenario, monkeypatch):
-    monkeypatch.setattr("services.agents.ordering.orchestrator.AUTO_SUBMIT_MAX_UNITS", 100)
+    monkeypatch.setattr("services.agents.agents.ordering.orchestrator.AUTO_SUBMIT_MAX_UNITS", 100)
     order_ids = approve(engine, EPINEPHRINE, "transfer_order", "supply_manager")
     big = next(o for o in order_ids if rows(engine, "SELECT qty FROM purchase_order WHERE order_id = :o", o=o)[0][0] > 100)
 
@@ -348,8 +348,8 @@ def test_a_large_order_is_held_until_procurement_releases_it(engine, scenario, m
 
 @db
 def test_it_submits_once_and_people_place_orders_when_it_is_off(engine, scenario, monkeypatch):
-    from services.agents.db_data import PostgresData
-    from services.agents.ordering.orchestrator import submit_orders
+    from services.agents.data.db_data import PostgresData
+    from services.agents.agents.ordering.orchestrator import submit_orders
 
     [order_id] = approve(engine, FENTANYL, "order", "procurement")
     before = submitted(engine, order_id)

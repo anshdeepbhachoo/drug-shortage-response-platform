@@ -20,11 +20,11 @@ from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.exc import DBAPIError  # noqa: E402
 
 from ingestion.synthetic_loader import load_folder  # noqa: E402
-from services.agents import approvals  # noqa: E402
-from services.agents.agent import process_email  # noqa: E402
-from services.agents.approvals import ApprovalError, approve_plan, pending_plans, reject_plan  # noqa: E402
-from services.agents.db_data import PostgresData  # noqa: E402
-from services.agents.results_store import save_pipeline_result  # noqa: E402
+from services.agents.store import approvals  # noqa: E402
+from services.agents.agents.signal_agents import process_email  # noqa: E402
+from services.agents.store.approvals import ApprovalError, approve_plan, pending_plans, reject_plan  # noqa: E402
+from services.agents.data.db_data import PostgresData  # noqa: E402
+from services.agents.store.results_store import save_pipeline_result  # noqa: E402
 from tests.test_agent import FakeModel, assessment  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]

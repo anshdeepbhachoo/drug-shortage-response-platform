@@ -22,7 +22,7 @@ Split of responsibilities, as in followup.py:
 Every check is written to audit_log (actor "order-agent"), and state across runs
 (nudges sent, final decisions) is rebuilt from those entries.
 
-  python -m services.agents.order_agent --now 2026-11-16T18:00 --as-of 2026-11-16
+  python -m services.agents.agents.order_agent --now 2026-11-16T18:00 --as-of 2026-11-16
 """
 
 from __future__ import annotations
@@ -40,10 +40,10 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from services.agents.followup_rules import ESCALATE_COVER_DAYS, project_stock
-from services.agents.followup_schemas import FollowUpAction, FollowUpDecision
-from services.agents.model_io import LLM, extract_json, serialize
-from services.agents.order_replies import (
+from services.agents.rules.followup_rules import ESCALATE_COVER_DAYS, project_stock
+from services.agents.agents.followup_schemas import FollowUpAction, FollowUpDecision
+from services.agents.agents.model_io import LLM, extract_json, serialize
+from services.agents.agents.order_replies import (
     CANNOT_SUPPLY,
     READER_SYSTEM_PROMPT,
     OrderReply,
@@ -51,8 +51,8 @@ from services.agents.order_replies import (
     check_order_reading,
     scenario_replies,
 )
-from services.agents.security import inspect_supplier_email
-from services.agents.tools import AgentTool, ToolRegistry
+from services.agents.rules.security import inspect_supplier_email
+from services.agents.agents.tools import AgentTool, ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ def resolve_model(llm: LLM | None, use_rules: bool = False) -> LLM | None:
     if llm is not None:
         return llm
     if os.getenv("BEDROCK_MODEL_ID"):
-        from services.agents.agent import run_agent
+        from services.agents.agents.signal_agents import run_agent
 
         return lambda system, task, registry: run_agent(system, task, registry)
     return None
@@ -605,7 +605,7 @@ def audit_writer(engine: Engine, orders: dict[str, WatchedOrder]):
 
 
 def _snapshot(engine: Engine, data) -> datetime:
-    from services.agents.followup_db import stock_snapshot_time
+    from services.agents.store.followup_db import stock_snapshot_time
 
     return stock_snapshot_time(engine, data)
 
@@ -662,7 +662,7 @@ def run_order_followup(engine: Engine, data, now: datetime, llm: LLM | None = No
     replies: {order_id: [OrderReply]}; default the synthetic replies (order_replies.scenario_replies).
     Each reply is read once, at the first check after it arrives."""
 
-    from services.agents.ordering.orchestrator import submit_orders
+    from services.agents.agents.ordering.orchestrator import submit_orders
 
     now = _naive_utc(now)
     draft_requests(engine, data, now, llm, plan_id)  # orders approved before drafting existed still get one
@@ -747,7 +747,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     from ingestion.lineage import get_engine
-    from services.agents.db_data import PostgresData
+    from services.agents.data.db_data import PostgresData
 
     llm = resolve_model(None) if args.live else None
     actions = run_order_followup(get_engine(), PostgresData.from_env(as_of=args.as_of),

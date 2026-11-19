@@ -1,5 +1,5 @@
 {
-  "_about": "How each supplier takes orders (services/agents/ordering/). 'channels' lists the systems a supplier accepts orders through, the usual one first; the order orchestrator agent chooses among them and the channel sub-agent for that system places the order. Synthetic: every channel is simulated, nothing leaves the machine. 'simulate' scripts how a channel answers: accept (default) or reject with a reason.",
+  "_about": "How each supplier takes orders (services/agents/agents/ordering/). 'channels' lists the systems a supplier accepts orders through, the usual one first; the order orchestrator agent chooses among them and the channel sub-agent for that system places the order. Synthetic: every channel is simulated, nothing leaves the machine. 'simulate' scripts how a channel answers: accept (default) or reject with a reason.",
   "default_channels": ["email"],
   "erp": {
     "system": "SAP S/4HANA",

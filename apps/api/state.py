@@ -18,9 +18,9 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from services.agents.approvals import APPROVER_ROLES, option_kind, shift_order_dates
-from services.agents.followup_db import DEFAULT_DEADLINE_HOURS
-from services.agents.db_data import PostgresData
+from services.agents.store.approvals import APPROVER_ROLES, option_kind, shift_order_dates
+from services.agents.store.followup_db import DEFAULT_DEADLINE_HOURS
+from services.agents.data.db_data import PostgresData
 
 ROOT = Path(__file__).resolve().parents[2]
 EMAILS = ROOT / "mock" / "emails"
@@ -518,7 +518,7 @@ def sources(conn, events: list[dict], plans: list[dict], stock: list[dict]) -> d
 # ---------------------------------------------------------
 
 def _inbox_for(day: date) -> list[str]:
-    from services.agents.daily_run import load_inbox
+    from services.agents.pipeline.daily_run import load_inbox
 
     return load_inbox().get(day.isoformat(), [])
 
@@ -583,7 +583,7 @@ def notifications(conn, items: list[dict]) -> list[dict]:
 
     From the agents: the order and follow-up agents' latest escalation or reminder (code chose the recipient),
     and orders the orchestrator agent handed to procurement (an email to send, a hold, an escalation).
-    From people: escalations (services/agents/escalations.py). A notification stays until someone in that role
+    From people: escalations (services/agents/store/escalations.py). A notification stays until someone in that role
     marks it read, or (for an order waiting on procurement) until the order is placed."""
 
     read = {(r["detail"] or {}).get("id") for r in _rows(conn, "SELECT detail FROM audit_log WHERE action = 'Notification read'")}

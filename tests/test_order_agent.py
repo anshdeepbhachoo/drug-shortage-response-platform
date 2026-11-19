@@ -12,8 +12,8 @@ from datetime import date, datetime
 
 import pytest
 
-from services.agents import order_agent
-from services.agents.order_agent import (
+from services.agents.agents import order_agent
+from services.agents.agents.order_agent import (
     DECISION_SYSTEM_PROMPT,
     REQUEST_SYSTEM_PROMPT,
     OrderAgent,
@@ -188,7 +188,7 @@ def client(engine):
 def approved_order(engine):
     """Run Nov 15 on rules and approve fentanyl's order option as procurement. Returns (plan_id, order_id)."""
 
-    from services.agents.daily_run import run_day
+    from services.agents.pipeline.daily_run import run_day
 
     run_day(engine, engine, NOV15, planner="rules", inbox={})
     [(plan_id, option)] = rows(engine, """
@@ -202,7 +202,7 @@ def approved_order(engine):
 
 
 def tick(engine, day):
-    from services.agents.graph.pipeline import AgentPipeline
+    from services.agents.pipeline.graph.pipeline import AgentPipeline
 
     return AgentPipeline(engine, engine, use_rules=True).tick(FENTANYL, day, datetime.combine(day, datetime.min.time()).replace(hour=18))
 
@@ -214,7 +214,7 @@ def record(engine, order_id, status, role="procurement", day="2026-11-16"):
 
 @db
 def test_approving_an_order_drafts_the_supplier_request_and_pauses_for_the_evening(engine):
-    from services.agents.graph.pipeline import AgentPipeline
+    from services.agents.pipeline.graph.pipeline import AgentPipeline
 
     plan_id, order_id = approved_order(engine)
 
@@ -226,7 +226,7 @@ def test_approving_an_order_drafts_the_supplier_request_and_pauses_for_the_eveni
 
 @db
 def test_the_daily_run_follows_the_order_up_and_nudges_procurement_to_place_it(engine):
-    from services.agents.daily_run import run_day
+    from services.agents.pipeline.daily_run import run_day
 
     _, order_id = approved_order(engine)
 
@@ -241,7 +241,7 @@ def test_the_daily_run_follows_the_order_up_and_nudges_procurement_to_place_it(e
 
 @db
 def test_placed_then_received_ends_the_alerts_workflow(engine):
-    from services.agents.graph.pipeline import AgentPipeline
+    from services.agents.pipeline.graph.pipeline import AgentPipeline
 
     _, order_id = approved_order(engine)
     assert record(engine, order_id, "placed").status_code == 200
@@ -256,7 +256,7 @@ def test_placed_then_received_ends_the_alerts_workflow(engine):
 
 @db
 def test_a_cancelled_order_replans_without_that_suppliers_order(engine):
-    from services.agents.graph.pipeline import AgentPipeline
+    from services.agents.pipeline.graph.pipeline import AgentPipeline
 
     plan_id, order_id = approved_order(engine)
     record(engine, order_id, "cancelled")

@@ -10,7 +10,7 @@ is planned once: its supply_event records source_ref "shortage_report:<id>".
 If planning fails (model down), nothing but an audit entry is written, so the
 report is picked up again next run.
 
-    python -m services.agents.shortage_signals            # needs Bedrock for planning
+    python -m services.agents.pipeline.shortage_signals            # needs Bedrock for planning
 """
 
 from __future__ import annotations
@@ -26,10 +26,10 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from services.agents.agent import default_today, process_event
-from services.agents.model_io import LLM
-from services.agents.results_store import save_pipeline_result
-from services.agents.schemas import SupplyEvent
+from services.agents.agents.signal_agents import default_today, process_event
+from services.agents.agents.model_io import LLM
+from services.agents.store.results_store import save_pipeline_result
+from services.agents.agents.schemas import SupplyEvent
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ def run_shortage_signals(
     """Plan every pending shortage report and save the results. Returns counts by outcome.
 
     planner: optional code planner (rules_planner) instead of the planning agent.
-    pipeline: optional LangGraph agentic pipeline (services/agents/graph/pipeline.py) that plans and
+    pipeline: optional LangGraph agentic pipeline (services/agents/pipeline/graph/pipeline.py) that plans and
     saves each report instead; same outcomes."""
 
     today = today or default_today()
@@ -141,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     from ingestion.lineage import get_engine
-    from services.agents.db_data import PostgresData
+    from services.agents.data.db_data import PostgresData
 
     engine = get_engine()
     data = PostgresData.from_env(as_of=args.as_of)

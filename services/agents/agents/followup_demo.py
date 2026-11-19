@@ -1,9 +1,9 @@
 """Simulated-clock demo for the follow-up agent.
 
-    python -m services.agents.followup_demo            # offline: rules + scripted replies
-    python -m services.agents.followup_demo --live     # Bedrock reader, decider and planner
-    python -m services.agents.followup_demo --json     # machine-readable output
-    python -m services.agents.followup_demo --trace    # also print every step
+    python -m services.agents.agents.followup_demo            # offline: rules + scripted replies
+    python -m services.agents.agents.followup_demo --live     # Bedrock reader, decider and planner
+    python -m services.agents.agents.followup_demo --json     # machine-readable output
+    python -m services.agents.agents.followup_demo --trace    # also print every step
 
 Every run writes (both gitignored, under data/):
     data/followup/audit.jsonl   one JSON line per decision: facts, reading, allowed
@@ -22,15 +22,15 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from services.agents.data import CsvData
-from services.agents.followup import (
+from services.agents.data.data import CsvData
+from services.agents.agents.followup import (
     FollowUpAgent,
     bedrock_planner,
     load_replies,
     load_requests,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 MOCK = ROOT / "mock"
 FOLLOWUP = MOCK / "followup"
 
@@ -49,7 +49,7 @@ def setup_logging():
     handler = logging.FileHandler(LOG_PATH, mode="w")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
     root = logging.getLogger()
-    for existing in list(root.handlers):  # agent.py adds a console handler in live mode
+    for existing in list(root.handlers):  # signal_agents.py adds a console handler in live mode
         root.removeHandler(existing)
     root.addHandler(handler)
     root.setLevel(logging.INFO)
@@ -62,9 +62,9 @@ def build_agent(live: bool, audit_path=None):
 
     llm = planner = None
     if live:
-        from services.agents.agent import run_agent
+        from services.agents.agents.signal_agents import run_agent
 
-        setup_logging()  # agent.py's import replaced our handlers; restore the file log
+        setup_logging()  # signal_agents.py's import replaced our handlers; restore the file log
 
         llm = lambda system, task, registry: run_agent(system, task, registry)
         planner = bedrock_planner

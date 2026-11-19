@@ -15,12 +15,12 @@ from pathlib import Path
 
 import pytest
 
-from services.agents.agent import _plan_for_event, check_plan, gap_for_event
-from services.agents.checks import check_options
-from services.agents.data import CsvData
-from services.agents.orders import ORDER_LEAD_DAYS, check_order, order_option, with_order_option
-from services.agents.rules_planner import rules_planner
-from services.agents.schemas import OrderLine, PlanOption, PlanSet, SupplyEvent
+from services.agents.agents.signal_agents import _plan_for_event, check_plan, gap_for_event
+from services.agents.rules.checks import check_options
+from services.agents.data.data import CsvData
+from services.agents.agents.orders import ORDER_LEAD_DAYS, check_order, order_option, with_order_option
+from services.agents.rules.rules_planner import rules_planner
+from services.agents.agents.schemas import OrderLine, PlanOption, PlanSet, SupplyEvent
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
@@ -183,8 +183,8 @@ def engine(monkeypatch):
 def saved_order_plan(engine):
     """A stock-watch style plan (restore cover) for 99000001; returns (plan_id, order option number)."""
 
-    from services.agents.db_data import PostgresData
-    from services.agents.results_store import save_pipeline_result
+    from services.agents.data.db_data import PostgresData
+    from services.agents.store.results_store import save_pipeline_result
 
     result = _plan_for_event(event(), event().model_dump(), PostgresData(engine), None, TODAY, None,
                              planner=rules_planner, restore=True)
@@ -211,8 +211,8 @@ def test_order_lines_are_saved_with_supplier_and_date(engine):
 
 @db
 def test_approving_an_order_records_an_approved_purchase_order(engine):
-    from services.agents.approvals import approve_plan
-    from services.agents.db_data import PostgresData
+    from services.agents.store.approvals import approve_plan
+    from services.agents.data.db_data import PostgresData
 
     plan_id, option = saved_order_plan(engine)
     result = approve_plan(engine, plan_id, "Sam Lee", "procurement", PostgresData(engine, as_of=TODAY), option=option)
@@ -230,8 +230,8 @@ def test_approving_an_order_records_an_approved_purchase_order(engine):
 
 @db
 def test_only_procurement_or_the_supply_manager_can_approve_an_order(engine):
-    from services.agents.approvals import ApprovalError, approve_plan
-    from services.agents.db_data import PostgresData
+    from services.agents.store.approvals import ApprovalError, approve_plan
+    from services.agents.data.db_data import PostgresData
 
     plan_id, option = saved_order_plan(engine)
     with pytest.raises(ApprovalError, match="cannot approve a order"):
@@ -243,8 +243,8 @@ def test_only_procurement_or_the_supply_manager_can_approve_an_order(engine):
 def test_an_order_that_would_now_arrive_too_late_is_refused(engine):
     from sqlalchemy import text
 
-    from services.agents.approvals import approve_plan
-    from services.agents.db_data import PostgresData
+    from services.agents.store.approvals import approve_plan
+    from services.agents.data.db_data import PostgresData
 
     plan_id, option = saved_order_plan(engine)
     with engine.begin() as conn:   # A's stock dropped to 2 days since the plan was made
@@ -258,8 +258,8 @@ def test_an_order_that_would_now_arrive_too_late_is_refused(engine):
 
 @db
 def test_the_lead_time_starts_when_the_order_is_approved(engine):
-    from services.agents.approvals import approve_plan
-    from services.agents.db_data import PostgresData
+    from services.agents.store.approvals import approve_plan
+    from services.agents.data.db_data import PostgresData
 
     plan_id, option = saved_order_plan(engine)   # planned Nov 15, expected Nov 20
     later = TODAY + timedelta(days=1)            # approved a day later: A still lasts until it arrives

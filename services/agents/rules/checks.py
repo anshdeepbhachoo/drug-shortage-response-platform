@@ -1,7 +1,7 @@
 import re
 
-from services.agents.orders import check_combined, check_order
-from services.agents.schemas import PlanOption
+from services.agents.agents.orders import check_combined, check_order
+from services.agents.agents.schemas import PlanOption
 
 
 def check_transfer(

@@ -16,10 +16,10 @@ pytestmark = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
 
-from services.agents.approvals import approve_plan  # noqa: E402
-from services.agents.daily_run import DayContext, run_day  # noqa: E402
-from services.agents.db_data import PostgresData  # noqa: E402
-from services.agents.graph.daily import build_daily_graph  # noqa: E402
+from services.agents.store.approvals import approve_plan  # noqa: E402
+from services.agents.pipeline.daily_run import DayContext, run_day  # noqa: E402
+from services.agents.data.db_data import PostgresData  # noqa: E402
+from services.agents.pipeline.graph.daily import build_daily_graph  # noqa: E402
 
 
 def reset(engine):
@@ -84,7 +84,7 @@ def test_graph_skips_planning_when_nothing_needs_a_plan(engine):
 def test_the_graph_is_the_default_orchestrator(engine, monkeypatch):
     monkeypatch.delenv("PIPELINE_ORCHESTRATOR", raising=False)
     called = []
-    monkeypatch.setattr("services.agents.graph.daily.run_daily_graph", lambda ctx: called.append(ctx.day) or {"day": "x"})
+    monkeypatch.setattr("services.agents.pipeline.graph.daily.run_daily_graph", lambda ctx: called.append(ctx.day) or {"day": "x"})
 
     run_day(engine, engine, NOV15, planner="rules", inbox={})
 

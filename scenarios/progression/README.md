@@ -27,7 +27,7 @@ Outputs:
 ## Inspect a day with the real loader
 
 ```powershell
-python -c "from services.agents.data import CsvData; from pprint import pprint; pprint(CsvData('scenarios/progression/days/2026-11-19').stock('99000001'))"
+python -c "from services.agents.data.data import CsvData; from pprint import pprint; pprint(CsvData('scenarios/progression/days/2026-11-19').stock('99000001'))"
 ```
 
 ## Design notes

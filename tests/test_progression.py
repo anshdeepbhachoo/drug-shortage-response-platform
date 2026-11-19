@@ -17,9 +17,9 @@ from generate_progression import (
     prepare_days_dir,
     run_progression,
 )
-from services.agents.data import CsvData
-from services.agents.risk import calculate_site_risk
-from services.agents.tools import build_tool_registries
+from services.agents.data.data import CsvData
+from services.agents.rules.risk import calculate_site_risk
+from services.agents.agents.tools import build_tool_registries
 
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = ROOT / "mock"

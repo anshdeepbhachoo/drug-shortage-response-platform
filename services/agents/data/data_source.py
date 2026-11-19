@@ -13,15 +13,15 @@ import os
 from datetime import date
 from pathlib import Path
 
-from services.agents.data import CsvData
+from services.agents.data.data import CsvData
 
-MOCK_DIR = Path(__file__).resolve().parents[2] / "mock"
+MOCK_DIR = Path(__file__).resolve().parents[3] / "mock"
 
 
 def default_data(as_of: date | None = None):
     source = os.getenv("AGENT_DATA_SOURCE", "csv").strip().lower()
     if source == "postgres":
-        from services.agents.db_data import PostgresData
+        from services.agents.data.db_data import PostgresData
 
         return PostgresData.from_env(as_of=as_of)
     if source != "csv":

@@ -1,5 +1,5 @@
 
-from services.agents.schemas import PlanSet
+from services.agents.agents.schemas import PlanSet
 
 
 PLANNING_SYSTEM_PROMPT = """

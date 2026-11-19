@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 
-from services.agents.schemas import Move, PlanOption, PlanSet
+from services.agents.agents.schemas import Move, PlanOption, PlanSet
 
 MIN_RESERVE_DAYS = 14  # same floor as checks.check_transfer
 # Donors keep a few days above their floor so the plan stays safe while it waits

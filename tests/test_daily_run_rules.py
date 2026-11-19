@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from services.agents.daily_run import event_from_watch, find_at_risk, load_inbox
-from services.agents.data import CsvData
-from services.agents.rules_planner import rules_planner
-from services.agents.schemas import SupplyEvent
+from services.agents.pipeline.daily_run import event_from_watch, find_at_risk, load_inbox
+from services.agents.data.data import CsvData
+from services.agents.rules.rules_planner import rules_planner
+from services.agents.agents.schemas import SupplyEvent
 
 ROOT = Path(__file__).resolve().parents[1]
 DAYS = ROOT / "scenarios" / "progression" / "days"

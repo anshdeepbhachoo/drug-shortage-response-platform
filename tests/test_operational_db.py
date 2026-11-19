@@ -24,9 +24,9 @@ from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.exc import ProgrammingError  # noqa: E402
 
 from ingestion.synthetic_loader import load_folder, load_progression, progression_folders  # noqa: E402
-from services.agents.agent import process_email  # noqa: E402
-from services.agents.data import CsvData  # noqa: E402
-from services.agents.db_data import PostgresData  # noqa: E402
+from services.agents.agents.signal_agents import process_email  # noqa: E402
+from services.agents.data.data import CsvData  # noqa: E402
+from services.agents.data.db_data import PostgresData  # noqa: E402
 from tests.test_agent import FakeModel, assessment, transfer  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]

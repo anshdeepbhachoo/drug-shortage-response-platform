@@ -22,9 +22,9 @@ from pathlib import Path
 
 from generate_progression import FOCUS_DIN, NUM_DAYS, START, run_progression
 from make_mock_data import generate as generate_mock
-from services.agents.data import CsvData
-from services.agents.risk import calculate_site_risk, cover_days_by_site
-from services.agents.tools import build_tool_registries
+from services.agents.data.data import CsvData
+from services.agents.rules.risk import calculate_site_risk, cover_days_by_site
+from services.agents.agents.tools import build_tool_registries
 
 ROOT = Path(__file__).resolve().parent
 MOCK = ROOT / "mock"

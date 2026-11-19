@@ -24,11 +24,11 @@ Planner: "auto" uses the planning agent (Bedrock) when a model is configured and
 the rules planner otherwise; "model" or "rules" force one. Reading emails always
 needs the model (except hostile ones, which the security screen stops first).
 
-  python -m services.agents.daily_run --day 2026-11-15
-  python -m services.agents.daily_run --day 2026-11-16 --planner rules
-  python -m services.agents.daily_run --day 2026-11-16 --orchestrator classic
+  python -m services.agents.pipeline.daily_run --day 2026-11-15
+  python -m services.agents.pipeline.daily_run --day 2026-11-16 --planner rules
+  python -m services.agents.pipeline.daily_run --day 2026-11-16 --orchestrator classic
 
-Orchestration: the steps run as a LangGraph graph by default (services/agents/graph/daily.py);
+Orchestration: the steps run as a LangGraph graph by default (services/agents/pipeline/graph/daily.py);
 --orchestrator classic (or PIPELINE_ORCHESTRATOR=classic) runs the same steps in plain Python order.
 """
 
@@ -47,19 +47,19 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from ingestion.synthetic_loader import PROGRESSION_DAYS, load_folder
-from services.agents.agent import process_email, process_event
-from services.agents.db_data import PostgresData
-from services.agents.followup_db import approved_transfers, run_followup
-from services.agents.order_agent import approved_orders, resolve_model, run_order_followup
-from services.agents.results_store import open_event_for, save_pipeline_result
-from services.agents.rules_planner import rules_planner
-from services.agents.schemas import SupplyEvent
-from services.agents.security import inspect_supplier_email
-from services.agents.shortage_signals import run_shortage_signals
+from services.agents.agents.signal_agents import process_email, process_event
+from services.agents.data.db_data import PostgresData
+from services.agents.store.followup_db import approved_transfers, run_followup
+from services.agents.agents.order_agent import approved_orders, resolve_model, run_order_followup
+from services.agents.store.results_store import open_event_for, save_pipeline_result
+from services.agents.rules.rules_planner import rules_planner
+from services.agents.agents.schemas import SupplyEvent
+from services.agents.rules.security import inspect_supplier_email
+from services.agents.pipeline.shortage_signals import run_shortage_signals
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 EMAILS = ROOT / "mock" / "emails"
 INBOX = ROOT / "scenarios" / "progression" / "inbox.json"
 
@@ -159,7 +159,7 @@ def living_event(engine: Engine, din: str) -> str | None:
 def plan_needs_redo(engine: Engine, data, event_id: str, alert: dict) -> str | None:
     """Why the alert's current plan no longer holds with today's stock, or None if it still does."""
 
-    from services.agents.approvals import _options, option_kind, recheck_combined, recheck_order, recheck_transfer
+    from services.agents.store.approvals import _options, option_kind, recheck_combined, recheck_order, recheck_transfer
 
     with engine.connect() as conn:
         plan = conn.execute(text("""
@@ -231,7 +231,7 @@ class DayContext:
     days_root: Path = PROGRESSION_DAYS
     has_model: bool = field(init=False)
     use_rules: bool = field(init=False)
-    # The LangGraph agentic pipeline (services/agents/graph/pipeline.py). None: the classic code path.
+    # The LangGraph agentic pipeline (services/agents/pipeline/graph/pipeline.py). None: the classic code path.
     pipeline: object = field(default=None, init=False)
 
     def __post_init__(self):
@@ -251,7 +251,7 @@ class DayContext:
 
 # ---------------------------------------------------------
 # The day's steps. run_day calls them in order; the LangGraph
-# pipeline (services/agents/graph/daily.py) calls the same functions
+# pipeline (services/agents/pipeline/graph/daily.py) calls the same functions
 # as graph nodes, so both orchestrators do exactly the same work.
 # ---------------------------------------------------------
 
@@ -441,8 +441,8 @@ def run_day(
 
     ctx = DayContext(write_engine, read_engine, day, llm, planner, max_plans, inbox, days_root)
     if uses_graph(orchestrator):
-        from services.agents.graph.daily import run_daily_graph
-        from services.agents.graph.pipeline import AgentPipeline
+        from services.agents.pipeline.graph.daily import run_daily_graph
+        from services.agents.pipeline.graph.pipeline import AgentPipeline
 
         ctx.pipeline = AgentPipeline(write_engine, read_engine, llm, ctx.use_rules)
         return run_daily_graph(ctx)
@@ -502,7 +502,7 @@ def plan_for_drug(
             "source_type": "manual", "kind": alert["kind"],
             "site_id": site_id or (alert["sites"][0]["site_id"] if len(alert["sites"]) == 1 else None)}
     if uses_graph(orchestrator):
-        from services.agents.graph.pipeline import AgentPipeline
+        from services.agents.pipeline.graph.pipeline import AgentPipeline
 
         final = AgentPipeline(write_engine, read_engine, llm, use_rules).signal(
             din, {"event": event.model_dump(), "save": save, "restore": True, "join": False}, as_of)

@@ -15,8 +15,8 @@ fallbacks and replanning. This module only feeds it and records what it does:
 
 Nothing is sent or executed; drafts and escalations wait for a person.
 
-  python -m services.agents.followup_db --now 2026-11-16T18:00 --as-of 2026-11-15
-  python -m services.agents.followup_db --now 2026-11-16T18:00 --as-of 2026-11-15 --replies replies.json --live
+  python -m services.agents.store.followup_db --now 2026-11-16T18:00 --as-of 2026-11-15
+  python -m services.agents.store.followup_db --now 2026-11-16T18:00 --as-of 2026-11-15 --replies replies.json --live
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from services.agents.followup import FollowUpAgent, load_replies
-from services.agents.followup_schemas import FollowUpAction, SiteReply, TransferRequest
+from services.agents.agents.followup import FollowUpAgent, load_replies
+from services.agents.agents.followup_schemas import FollowUpAction, SiteReply, TransferRequest
 
 logger = logging.getLogger(__name__)
 
@@ -208,12 +208,12 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     from ingestion.lineage import get_engine
-    from services.agents.db_data import PostgresData
+    from services.agents.data.db_data import PostgresData
 
     llm = planner = None
     if args.live:
-        from services.agents.agent import run_agent
-        from services.agents.followup import bedrock_planner
+        from services.agents.agents.signal_agents import run_agent
+        from services.agents.agents.followup import bedrock_planner
 
         llm = lambda system, task, registry: run_agent(system, task, registry)
         planner = bedrock_planner
