@@ -47,7 +47,7 @@ jobs:
 
       - name: Check for unexpected tracked file changes
         # Isolated CI checkout is disposable. Do not restore or rewrite history.
-        # tests/test_progression may regenerate scenarios/progression (documented in README).
+        # tests/test_progression may regenerate data/synthetic/progression (documented in README).
         # Fail only if other tracked paths change.
         #
         # Use git diff --name-only HEAD (not porcelain parsing). Porcelain lines like
@@ -63,7 +63,7 @@ jobs:
           unexpected=()
           for path in "${dirty[@]}"; do
             case "$path" in
-              scenarios/progression|scenarios/progression/*) ;;
+              data/synthetic/progression|data/synthetic/progression/*) ;;
               *) unexpected+=("$path") ;;
             esac
           done
@@ -73,12 +73,12 @@ jobs:
             git diff --stat HEAD
           fi
           if [ "${#unexpected[@]}" -gt 0 ]; then
-            echo "::error::Unexpected tracked file modifications outside scenarios/progression:"
+            echo "::error::Unexpected tracked file modifications outside data/synthetic/progression:"
             printf '%s\n' "${unexpected[@]}"
             exit 1
           fi
           if [ "${#dirty[@]}" -gt 0 ]; then
-            echo "Only known regenerating paths under scenarios/progression were modified; not restored."
+            echo "Only known regenerating paths under data/synthetic/progression were modified; not restored."
           else
             echo "No tracked file modifications detected."
           fi

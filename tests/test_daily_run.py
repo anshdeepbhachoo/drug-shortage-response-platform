@@ -29,7 +29,7 @@ from tests.test_agent import FakeModel, assessment, transfer  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 URL = os.environ.get("TEST_DATABASE_URL")
 NOV15, NOV16 = date(2026, 11, 15), date(2026, 11, 16)
-DAYS = ROOT / "scenarios" / "progression" / "days"
+DAYS = ROOT / "data" / "synthetic" / "progression" / "days"
 
 pytestmark = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
 
@@ -234,7 +234,7 @@ def test_email_joins_the_drugs_alert_and_replaces_its_plan(engine):
 def test_plan_is_redone_when_tomorrows_stock_makes_it_unsafe(engine, tmp_path):
     import shutil
     days = tmp_path / "days"
-    shutil.copytree(ROOT / "scenarios" / "progression" / "days", days)
+    shutil.copytree(ROOT / "data" / "synthetic" / "progression" / "days", days)
     usage = days / "2026-11-16" / "usage.csv"                                    # Northside's use jumps on day 2
     usage.write_text(usage.read_text().replace("B,99000001,8\n", "B,99000001,20\n"))
     model = FakeModel(assessments=[assessment()], plans=[transfer("B", 180)])
@@ -263,7 +263,7 @@ def test_api_gives_plans_their_hospitals_and_problems_their_evidence(engine):
 def test_approved_plan_is_left_to_followup_not_replaced(engine, tmp_path):
     import shutil
     days = tmp_path / "days"
-    shutil.copytree(ROOT / "scenarios" / "progression" / "days", days)
+    shutil.copytree(ROOT / "data" / "synthetic" / "progression" / "days", days)
     usage = days / "2026-11-16" / "usage.csv"                                    # same jump as above
     usage.write_text(usage.read_text().replace("B,99000001,8\n", "B,99000001,20\n"))
     model = FakeModel(assessments=[assessment()], plans=[transfer("B", 180)])

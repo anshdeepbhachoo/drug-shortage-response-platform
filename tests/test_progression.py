@@ -22,8 +22,8 @@ from services.agents.rules.risk import calculate_site_risk
 from services.agents.agents.tools import build_tool_registries
 
 ROOT = Path(__file__).resolve().parents[1]
-MOCK = ROOT / "mock"
-OUT = ROOT / "scenarios" / "progression"
+MOCK = ROOT / "data" / "synthetic" / "mock"
+OUT = ROOT / "data" / "synthetic" / "progression"
 
 
 @pytest.fixture(scope="module")
@@ -124,7 +124,7 @@ def test_each_day_works_with_tool_registry(progression):
 
 
 def test_source_mock_unchanged_by_generator(progression):
-    # Spot-check Phase 1 baseline values remain in mock/.
+    # Spot-check Phase 1 baseline values remain in data/synthetic/mock/.
     world = load_world(MOCK)
     assert world.inventory[("A", FOCUS_DIN)] == 60
     assert world.inventory[("B", FOCUS_DIN)] == 400

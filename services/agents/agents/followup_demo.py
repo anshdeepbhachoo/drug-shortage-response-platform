@@ -31,7 +31,7 @@ from services.agents.agents.followup import (
 )
 
 ROOT = Path(__file__).resolve().parents[3]
-MOCK = ROOT / "mock"
+MOCK = ROOT / "data" / "synthetic" / "mock"
 FOLLOWUP = MOCK / "followup"
 
 LOG_DIR = ROOT / "data" / "followup"

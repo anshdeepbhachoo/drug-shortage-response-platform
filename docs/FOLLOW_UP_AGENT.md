@@ -39,7 +39,7 @@ The model can only choose from what Python allows, so even a confused or manipul
 
 ## 3. Data formats
 
-### `mock/followup/transfer_requests.csv`
+### `data/synthetic/mock/followup/transfer_requests.csv`
 
 One row per approved transfer. Loaded into `TransferRequest`.
 
@@ -47,8 +47,8 @@ One row per approved transfer. Loaded into `TransferRequest`.
 |---|---|---|
 | `request_id` | `T-101` | Unique ID |
 | `plan_id` | `P-2026-11-15-01` | The approved plan it came from |
-| `din` | `99000001` | Must exist in `mock/drugs.csv` |
-| `from_site`, `to_site` | `B`, `A` | Site IDs from `mock/sites.csv` |
+| `din` | `99000001` | Must exist in `data/synthetic/mock/drugs.csv` |
+| `from_site`, `to_site` | `B`, `A` | Site IDs from `data/synthetic/mock/sites.csv` |
 | `units` | `150` | > 0 |
 | `approval_status` | `approved` | `pending`, `approved` or `rejected` |
 | `approver_role` | `pharmacy_manager` | Recipient of escalations |
@@ -56,7 +56,7 @@ One row per approved transfer. Loaded into `TransferRequest`.
 
 Runtime-only fields (not in the CSV): `units_confirmed` (default 0), `status` (`open` / `replanned` / `escalated` / `closed`), `last_nudged_at`.
 
-### `mock/followup/replies.json`
+### `data/synthetic/mock/followup/replies.json`
 
 List of site replies. Loaded into `SiteReply`. The text is **untrusted**.
 

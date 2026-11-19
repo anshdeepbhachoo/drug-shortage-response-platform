@@ -1,11 +1,11 @@
-"""Generate a deterministic multi-day synthetic progression from mock/.
+"""Generate a deterministic multi-day synthetic progression from data/synthetic/mock/.
 
-Does NOT overwrite mock/. Writes snapshots to scenarios/progression/days/<date>/
+Does NOT overwrite data/synthetic/mock/. Writes snapshots to data/synthetic/progression/days/<date>/
 with the same CSV schemas expected by services.agents.data.data.CsvData.
 
 Usage:
   python -m scripts.synthetic.generate_progression
-  python -m scripts.synthetic.generate_progression --source mock --out scenarios/progression
+  python -m scripts.synthetic.generate_progression --source data/synthetic/mock --out data/synthetic/progression
 """
 
 from __future__ import annotations
@@ -340,7 +340,7 @@ def run_progression(source: Path, out: Path) -> World:
         as_of = START + timedelta(days=day - 1)
 
         if day == 1:
-            world.log(day, as_of, "baseline", note="Phase 1 mock/ morning snapshot")
+            world.log(day, as_of, "baseline", note="Phase 1 data/synthetic/mock/ morning snapshot")
         else:
             # Same-day usage changes apply BEFORE consumption.
             if day == 6:
@@ -496,7 +496,7 @@ def write_report(out: Path, daily_reports: list[dict], ledger: list[dict]) -> No
     lines = [
         "# Progression report — Cyclophosphamide 500 mg (`99000001`)",
         "",
-        "Synthetic timeline generated from Phase 1 `mock/` without modifying it.",
+        "Synthetic timeline generated from Phase 1 `data/synthetic/mock/` without modifying it.",
         "",
         f"- Start date: **{START.isoformat()}**",
         f"- Days: **{NUM_DAYS}**",
@@ -563,7 +563,7 @@ def write_report(out: Path, daily_reports: list[dict], ledger: list[dict]) -> No
             "```powershell",
             "python -m scripts.synthetic.generate_progression",
             "python -c \"from services.agents.data.data import CsvData; "
-            "print(CsvData('scenarios/progression/days/2026-11-19').stock('99000001'))\"",
+            "print(CsvData('data/synthetic/progression/days/2026-11-19').stock('99000001'))\"",
             "```",
             "",
             "Ledger: `ledger.json`. Risk series: `daily_risk.json`.",
@@ -575,8 +575,8 @@ def write_report(out: Path, daily_reports: list[dict], ledger: list[dict]) -> No
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, default=Path("mock"))
-    parser.add_argument("--out", type=Path, default=Path("scenarios/progression"))
+    parser.add_argument("--source", type=Path, default=Path("data/synthetic/mock"))
+    parser.add_argument("--out", type=Path, default=Path("data/synthetic/progression"))
     args = parser.parse_args()
     run_progression(args.source, args.out)
     print(f"wrote {args.out}/days/ ({NUM_DAYS} snapshots), ledger.json, REPORT.md")

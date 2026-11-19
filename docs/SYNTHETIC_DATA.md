@@ -8,13 +8,13 @@ All DINs `9900xxxx` are **synthetic**. They are not Health Canada registrations.
 
 | Layer | Location | Contents |
 |---|---|---|
-| Current-day network | `mock/` | 6 hospitals, 22 medications, 132 inventory/usage rows, 20 open orders, supplier emails |
+| Current-day network | `data/synthetic/mock/` | 6 hospitals, 22 medications, 132 inventory/usage rows, 20 open orders, supplier emails |
 | Classic 3-site fixture | `tests/fixtures/baseline_three_site/` | Frozen A/B/C demo numbers for exact agent regression tests |
-| 10-day progression | `scenarios/progression/days/` | Daily CsvData-compatible snapshots |
-| Scenario notes | `mock/SCENARIOS.md` | Current-day shortage scenarios A–H |
-| Progression report | `scenarios/progression/REPORT.md` | Generated day-by-day focus-DIN table |
+| 10-day progression | `data/synthetic/progression/days/` | Daily CsvData-compatible snapshots |
+| Scenario notes | `data/synthetic/mock/SCENARIOS.md` | Current-day shortage scenarios A–H |
+| Progression report | `data/synthetic/progression/REPORT.md` | Generated day-by-day focus-DIN table |
 
-Agents load CSVs through `services.agents.data.data.CsvData` (unchanged). Default agent path remains `mock/`.
+Agents load CSVs through `services.agents.data.data.CsvData` (unchanged). Default agent path remains `data/synthetic/mock/`.
 
 ## Quick start (PowerShell)
 
@@ -47,9 +47,9 @@ cd C:\Desktop\drug-shortage-response-platform
 
 ### Restore / regenerate baseline safely
 
-- Current-day reproducible source of truth: `scripts/synthetic/make_mock_data.py` → `mock/`
-- Progression: `scripts/synthetic/generate_progression.py` (does **not** modify `mock/`)
-- Protected forever: `mock/emails/{clear,ambiguous,hostile,sneaky}.txt` and `mock/followup/`
+- Current-day reproducible source of truth: `scripts/synthetic/make_mock_data.py` → `data/synthetic/mock/`
+- Progression: `scripts/synthetic/generate_progression.py` (does **not** modify `data/synthetic/mock/`)
+- Protected forever: `data/synthetic/mock/emails/{clear,ambiguous,hostile,sneaky}.txt` and `data/synthetic/mock/followup/`
 - Do **not** hand-edit generated CSVs/emails if you need edits to survive regeneration—change the generator instead
 
 ## Walkthrough — 10 days for Cyclophosphamide 500 mg (`99000001`)
@@ -78,7 +78,7 @@ Quantities below come from the generated progression (`daily_risk.json` / `REPOR
 | Deterministic calculations | days of supply, shortfall, spare units, transfer feasibility checks | Existing `CsvData`, `risk.py`, `tools.get_spare_units`, `checks.py` |
 | Scripted ledger events | `transfer_proposed`, `transfer_rejected`, `followup_check` | `scripts/synthetic/generate_progression.py` demo story — **not** Bedrock agent outputs |
 | Applied stock events | consumption, `transfer_received`, `delivery_received`, usage changes | Progression engine (mathematically accounted) |
-| Live agent demos | `python -m services.agents.agents.signal_agents mock/emails/clear.txt` | Signal/Planner with Bedrock (optional; needs AWS). Use any day’s folder via `CsvData(path)` if wiring a custom call. |
+| Live agent demos | `python -m services.agents.agents.signal_agents data/synthetic/mock/emails/clear.txt` | Signal/Planner with Bedrock (optional; needs AWS). Use any day’s folder via `CsvData(path)` if wiring a custom call. |
 
 ## Known limitations
 
@@ -90,11 +90,11 @@ Quantities below come from the generated progression (`daily_risk.json` / `REPOR
 ## Repository map (synthetic-data owned)
 
 ```
-scripts/synthetic/make_mock_data.py              # Phase 1 current-day generator
-scripts/synthetic/generate_progression.py        # Phase 2 10-day snapshots
-scripts/synthetic/inspect_synthetic.py           # Phase 3 teammate CLI
-mock/                          # active current-day dataset + emails + followup/
-scenarios/progression/         # days/, REPORT.md, ledger.json
+scripts/synthetic/make_mock_data.py         # Phase 1 current-day generator
+scripts/synthetic/generate_progression.py   # Phase 2 10-day snapshots
+scripts/synthetic/inspect_synthetic.py      # Phase 3 teammate CLI
+data/synthetic/mock/                        # active current-day dataset + emails + followup/
+data/synthetic/progression/                 # days/, REPORT.md, ledger.json
 tests/fixtures/baseline_three_site/
 tests/test_synthetic_data.py
 tests/test_progression.py
@@ -104,6 +104,6 @@ docs/SYNTHETIC_DATA.md         # this file
 ## Relation to agents
 
 - `services/agents/data/data.py` reads the CSV schemas above.
-- Existing email security tests still use `mock/emails/{clear,hostile,...}.txt`.
-- Follow-up demos still use `mock/followup/`.
-- Exact classic A/B/C cover_days assertions use `tests/fixtures/baseline_three_site/` so expanded `mock/` can stay six-hospital.
+- Existing email security tests still use `data/synthetic/mock/emails/{clear,hostile,...}.txt`.
+- Follow-up demos still use `data/synthetic/mock/followup/`.
+- Exact classic A/B/C cover_days assertions use `tests/fixtures/baseline_three_site/` so expanded `data/synthetic/mock/` can stay six-hospital.

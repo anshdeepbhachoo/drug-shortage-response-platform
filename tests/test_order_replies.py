@@ -2,7 +2,7 @@
 
 The unit tests need nothing. The pipeline tests are skipped unless TEST_DATABASE_URL points at a
 disposable Postgres (owner role); they approve fentanyl's order (Apex Sterile, Central General) on
-Nov 15 of the 10-day scenario and let the synthetic replies in mock/orders/order_replies.json arrive.
+Nov 15 of the 10-day scenario and let the synthetic replies in data/synthetic/mock/orders/order_replies.json arrive.
 """
 
 from __future__ import annotations

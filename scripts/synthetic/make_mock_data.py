@@ -1,9 +1,9 @@
 """Generate MediFlow synthetic hospital supply-chain CSVs.
 
-Writes the ACTIVE expanded dataset into mock/ (default).
+Writes the ACTIVE expanded dataset into data/synthetic/mock/ (default).
 
 Safety:
-- Never touches mock/followup/ (teammate follow-up fixtures).
+- Never touches data/synthetic/mock/followup/ (teammate follow-up fixtures).
 - Never overwrites protected adversarial/demo emails
   (clear/ambiguous/hostile/sneaky).
 - DOES overwrite active CSVs and generated emails on every run
@@ -15,7 +15,7 @@ All DINs are synthetic (9900xxxx). They are NOT Health Canada registrations.
 
 Usage:
   python -m scripts.synthetic.make_mock_data
-  python -m scripts.synthetic.make_mock_data --out mock
+  python -m scripts.synthetic.make_mock_data --out data/synthetic/mock
 """
 
 from __future__ import annotations
@@ -357,7 +357,7 @@ def generate(out: Path) -> None:
     # Never recreate or clear follow-up fixtures.
     if not (out / "followup").exists():
         print(
-            "NOTE: mock/followup/ is absent. Not creating it — "
+            "NOTE: data/synthetic/mock/followup/ is absent. Not creating it — "
             "preserve teammate follow-up fixtures separately."
         )
 
@@ -393,7 +393,7 @@ def main() -> None:
     parser.add_argument(
         "--out",
         type=Path,
-        default=Path("mock"),
+        default=Path("data/synthetic/mock"),
         help="Output directory for active CSVs (default: mock)",
     )
     args = parser.parse_args()

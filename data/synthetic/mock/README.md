@@ -1,6 +1,6 @@
 # Synthetic mock data (active current-day set)
 
-Teammate handoff guide: [`docs/SYNTHETIC_DATA.md`](../docs/SYNTHETIC_DATA.md)
+Teammate handoff guide: [`docs/SYNTHETIC_DATA.md`](../../../docs/SYNTHETIC_DATA.md)
 
 All content here is **synthetic**. DINs starting with `9900` are **not** real Health Canada registrations.
 
@@ -20,7 +20,7 @@ python -m scripts.synthetic.make_mock_data
 
 Do **not** put permanent manual edits in the generated CSVs or generated emails. Change `scripts/synthetic/make_mock_data.py` and regenerate instead.
 
-Phase 1 current-day data is the reproducible starting point for demos and for Phase 2 progression (`scenarios/progression/`).
+Phase 1 current-day data is the reproducible starting point for demos and for Phase 2 progression (`data/synthetic/progression/`).
 
 ## Reported vs applied supplier events
 

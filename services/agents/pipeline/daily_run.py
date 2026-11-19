@@ -3,7 +3,7 @@
 Everything a real deployment would do without anyone clicking anything, in order:
 
 1. Ingest   that day's hospital data (stock, usage, orders). Safe to re-run.
-2. Inbox    the supplier emails that arrive that day (scenarios/progression/inbox.json):
+2. Inbox    the supplier emails that arrive that day (data/synthetic/progression/inbox.json):
             security screen -> assessment agent -> risk -> planning -> checks -> saved.
             An email about a drug that already has an alert joins it, and its plan
             replaces the alert's waiting plan (emails refine plans, they don't fork them).
@@ -60,8 +60,9 @@ from services.agents.pipeline.shortage_signals import run_shortage_signals
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[3]
-EMAILS = ROOT / "mock" / "emails"
-INBOX = ROOT / "scenarios" / "progression" / "inbox.json"
+SYNTHETIC = ROOT / "data" / "synthetic"
+EMAILS = SYNTHETIC / "mock" / "emails"
+INBOX = SYNTHETIC / "progression" / "inbox.json"
 
 URGENT_DAYS = 7          # the Stock page's red zone
 # How early the watch acts, by how critical the drug is (days of stock left with
@@ -269,7 +270,7 @@ def step_inbox(ctx: DayContext) -> dict:
     emails = []
     for name in ctx.inbox.get(ctx.day.isoformat(), []):
         path = EMAILS / Path(name).name
-        source_ref = str(path.relative_to(ROOT))
+        source_ref = path.relative_to(SYNTHETIC).as_posix()  # "mock/emails/<name>", as stored before the move
         if not path.is_file():
             emails.append({"email": name, "status": "missing"})
             continue

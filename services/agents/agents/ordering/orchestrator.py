@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 
 ACTOR = "order-orchestrator"
 ROOT = Path(__file__).resolve().parents[4]
-ROUTING_PATH = ROOT / "mock" / "orders" / "supplier_channels.json"
+ROUTING_PATH = ROOT / "data" / "synthetic" / "mock" / "orders" / "supplier_channels.json"
 AUTO_SUBMIT_MAX_UNITS = int(os.environ.get("AUTO_SUBMIT_MAX_UNITS", "500"))
 RELEASE_ROLES = {"procurement", "supply_manager"}
 DONE = {"accepted", "ready_to_send", "escalated"}

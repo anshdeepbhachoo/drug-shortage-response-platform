@@ -201,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="Check time, e.g. 2026-11-16T18:00 (default: now, UTC)")
     parser.add_argument("--as-of", type=lambda v: datetime.fromisoformat(v).date(),
                         help="Stock snapshot day to project from (default: latest loaded)")
-    parser.add_argument("--replies", help="JSON file of site replies (same format as mock/followup/replies.json)")
+    parser.add_argument("--replies", help="JSON file of site replies (same format as data/synthetic/mock/followup/replies.json)")
     parser.add_argument("--deadline-hours", type=float, default=DEFAULT_DEADLINE_HOURS)
     parser.add_argument("--live", action="store_true", help="Use Bedrock for reading replies, decisions and replans")
     args = parser.parse_args(argv)

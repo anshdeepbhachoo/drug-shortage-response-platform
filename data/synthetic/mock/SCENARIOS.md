@@ -1,6 +1,6 @@
 # Synthetic shortage scenarios (current-day)
 
-All data under `mock/` is **synthetic**. DINs `9900xxxx` are **not** Health Canada registrations.
+All data under `data/synthetic/mock/` is **synthetic**. DINs `9900xxxx` are **not** Health Canada registrations.
 
 Baseline date: **2026-11-15** (`MOCK_TODAY`).
 
@@ -83,4 +83,4 @@ python -m scripts.synthetic.make_mock_data
 
 **Warning:** this **overwrites** the active CSVs and the generated (non-protected) emails. It does not modify `followup/` or the four protected email files. Do not hand-edit generated files if you need those edits to survive regeneration—change the generator instead.
 
-This Phase 1 dataset is the reproducible starting point for Phase 2 progression snapshots under `scenarios/progression/`.
+This Phase 1 dataset is the reproducible starting point for Phase 2 progression snapshots under `data/synthetic/progression/`.

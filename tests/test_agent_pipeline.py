@@ -119,7 +119,7 @@ def test_a_follow_up_replan_loops_back_and_never_reuses_the_failed_donor(engine,
 def test_intake_holds_a_hostile_notice_and_hands_a_clean_one_to_the_alert(engine):
     from pathlib import Path
 
-    emails = Path(__file__).resolve().parents[1] / "mock" / "emails"
+    emails = Path(__file__).resolve().parents[1] / "data" / "synthetic" / "mock" / "emails"
     model = FakeModel(assessments=[assessment()])
     pipeline = AgentPipeline(engine, engine, llm=model)
 

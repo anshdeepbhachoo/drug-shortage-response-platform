@@ -23,7 +23,8 @@ from services.agents.store.followup_db import DEFAULT_DEADLINE_HOURS
 from services.agents.data.db_data import PostgresData
 
 ROOT = Path(__file__).resolve().parents[2]
-EMAILS = ROOT / "mock" / "emails"
+SYNTHETIC = ROOT / "data" / "synthetic"
+EMAILS = SYNTHETIC / "mock" / "emails"
 
 ROLE_OF_APPROVER = {"supply_manager": "supply", "pharmacy_manager": "pharmacist", "pharmacist": "pharmacist",
                     "procurement": "procurement"}
@@ -317,9 +318,10 @@ def plan_cards(plans: list[dict], as_of: date | None = None, platform: dict[str,
 
 
 def _email_file(source_ref: str) -> Path | None:
-    """Only files inside mock/emails are read."""
+    """Only files inside data/synthetic/mock/emails are read. source_ref is relative to data/synthetic
+    ("mock/emails/clear.txt")."""
 
-    path = (ROOT / source_ref).resolve()
+    path = (SYNTHETIC / source_ref).resolve()
     return path if path.is_file() and EMAILS.resolve() in path.parents else None
 
 

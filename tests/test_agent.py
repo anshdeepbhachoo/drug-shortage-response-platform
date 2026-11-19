@@ -1,6 +1,6 @@
 """Signal -> plan pipeline tests. No Bedrock: the model is a fake function.
 
-Numbers used below come from mock/ with today = 2026-11-15:
+Numbers used below come from data/synthetic/mock/ with today = 2026-11-15:
 - DIN 99000001 (cyclophosphamide 500 mg), 3-week delay = 21 days.
 - Site A: 60 on hand, 10/day, open order O-1001 due Nov 18 -> must last
   3 + 21 = 24 days -> needs 240 - 60 = 180 units.
@@ -23,7 +23,7 @@ from services.agents.data.data import CsvData
 from services.agents.rules.security import inspect_supplier_email
 
 ROOT = Path(__file__).resolve().parents[1]
-MOCK = ROOT / "mock"
+MOCK = ROOT / "data" / "synthetic" / "mock"
 # Isolated 3-site fixture: exact cover_days / shortfall regression for the
 # original demo. Expanded six-hospital data is exercised in test_synthetic_data.py.
 DATA = ROOT / "tests" / "fixtures" / "baseline_three_site"

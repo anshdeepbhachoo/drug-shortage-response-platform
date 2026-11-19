@@ -18,7 +18,7 @@ from services.agents.agents.followup_demo import run
 from services.agents.agents.followup_schemas import SiteReply
 
 ROOT = Path(__file__).resolve().parents[1]
-MOCK = ROOT / "mock"
+MOCK = ROOT / "data" / "synthetic" / "mock"
 SNAPSHOT = datetime(2026, 11, 15)
 EVENING_1 = datetime(2026, 11, 16, 18)
 

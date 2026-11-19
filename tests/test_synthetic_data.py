@@ -15,7 +15,7 @@ from services.agents.agents.schemas import Move, PlanOption
 from services.agents.agents.tools import build_tool_registries
 
 ROOT = Path(__file__).resolve().parents[1]
-MOCK = ROOT / "mock"
+MOCK = ROOT / "data" / "synthetic" / "mock"
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
 TODAY = date(2026, 11, 15)
 KEEP = 21  # days used for donor spare checks under a 3-week delay

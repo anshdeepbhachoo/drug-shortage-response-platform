@@ -30,9 +30,9 @@ from services.agents.data.db_data import PostgresData  # noqa: E402
 from tests.test_agent import FakeModel, assessment, transfer  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-MOCK = ROOT / "mock"
+MOCK = ROOT / "data" / "synthetic" / "mock"
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
-DAYS = ROOT / "scenarios" / "progression" / "days"
+DAYS = ROOT / "data" / "synthetic" / "progression" / "days"
 URL = os.environ.get("TEST_DATABASE_URL")
 READONLY_URL = os.environ.get("TEST_DATABASE_URL_READONLY")
 

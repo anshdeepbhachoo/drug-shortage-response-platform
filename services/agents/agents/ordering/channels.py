@@ -23,7 +23,7 @@ asks through a tool, in code:
                         nothing leaves the machine; "live" needs a real connector.
 
 Adding a target system (Oracle, Workday, Ariba, a GPO portal) is one more class here, a
-sub-agent prompt in subagents.py, and one line in mock/orders/supplier_channels.json.
+sub-agent prompt in subagents.py, and one line in data/synthetic/mock/orders/supplier_channels.json.
 """
 
 from __future__ import annotations

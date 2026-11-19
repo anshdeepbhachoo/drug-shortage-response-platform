@@ -1,7 +1,7 @@
 """Pick the agents' data source in one place.
 
     AGENT_DATA_SOURCE=postgres   -> PostgresData (reads as DATABASE_URL_READONLY)
-    AGENT_DATA_SOURCE=csv / unset -> CsvData over mock/ (no database needed)
+    AGENT_DATA_SOURCE=csv / unset -> CsvData over data/synthetic/mock/ (no database needed)
 
 Every agent entry point that isn't handed a data object calls default_data(),
 so switching the whole system to the database is one setting.
@@ -15,7 +15,7 @@ from pathlib import Path
 
 from services.agents.data.data import CsvData
 
-MOCK_DIR = Path(__file__).resolve().parents[3] / "mock"
+MOCK_DIR = Path(__file__).resolve().parents[3] / "data" / "synthetic" / "mock"
 
 
 def default_data(as_of: date | None = None):

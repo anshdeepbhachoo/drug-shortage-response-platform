@@ -35,7 +35,7 @@ from services.agents.store.results_store import save_pipeline_result  # noqa: E4
 from tests.test_agent import FakeModel, assessment  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-MOCK = ROOT / "mock"
+MOCK = ROOT / "data" / "synthetic" / "mock"
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
 URL = os.environ.get("TEST_DATABASE_URL")
 NOV15 = date(2026, 11, 15)

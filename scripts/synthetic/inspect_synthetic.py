@@ -27,8 +27,8 @@ from services.agents.rules.risk import calculate_site_risk, cover_days_by_site
 from services.agents.agents.tools import build_tool_registries
 
 ROOT = Path(__file__).resolve().parents[2]
-MOCK = ROOT / "mock"
-PROGRESSION = ROOT / "scenarios" / "progression"
+MOCK = ROOT / "data" / "synthetic" / "mock"
+PROGRESSION = ROOT / "data" / "synthetic" / "progression"
 PROTECTED_EMAILS = ("clear.txt", "ambiguous.txt", "hostile.txt", "sneaky.txt")
 
 
@@ -57,7 +57,7 @@ def cmd_summary(_: argparse.Namespace) -> None:
     inv = list(csv.DictReader((MOCK / "inventory.csv").open(encoding="utf-8-sig")))
     orders = list(csv.DictReader((MOCK / "open_orders.csv").open(encoding="utf-8-sig")))
     emails = sorted(p.name for p in (MOCK / "emails").glob("*.txt"))
-    print("=== Current-day mock/ ===")
+    print("=== Current-day data/synthetic/mock/ ===")
     print(f"hospitals: {len(sites)}")
     print(f"medications: {len(drugs)}")
     print(f"inventory rows: {len(inv)}")
@@ -77,7 +77,7 @@ def cmd_summary(_: argparse.Namespace) -> None:
 
 def cmd_day(args: argparse.Namespace) -> None:
     folder = resolve_day(args.day) if args.day != "current" else MOCK
-    label = "mock/ (current day)" if args.day == "current" else folder.name
+    label = "data/synthetic/mock/ (current day)" if args.day == "current" else folder.name
     data = CsvData(folder)
     din = args.din
     print(f"=== Snapshot: {label} | DIN {din} ===")
@@ -159,7 +159,7 @@ def cmd_spare(args: argparse.Namespace) -> None:
 def cmd_generate(_: argparse.Namespace) -> None:
     generate_mock(MOCK)
     run_progression(MOCK, PROGRESSION)
-    print("Current-day mock/ and progression snapshots refreshed.")
+    print("Current-day data/synthetic/mock/ and progression snapshots refreshed.")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -186,7 +186,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_spare.add_argument("--keep-days", type=float, default=14)
     p_spare.set_defaults(func=cmd_spare)
 
-    p_gen = sub.add_parser("generate", help="Regenerate mock/ + progression")
+    p_gen = sub.add_parser("generate", help="Regenerate data/synthetic/mock/ + progression")
     p_gen.set_defaults(func=cmd_generate)
 
     return parser

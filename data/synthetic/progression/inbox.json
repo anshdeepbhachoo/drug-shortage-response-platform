@@ -1,5 +1,5 @@
 {
-  "_about": "Which mock supplier emails arrive on which simulated day (services/agents/pipeline/daily_run.py). Emails arrive the morning before the order feed catches up, so a delay in an email is not counted twice. Scenario letters refer to mock/SCENARIOS.md.",
+  "_about": "Which mock supplier emails arrive on which simulated day (services/agents/pipeline/daily_run.py). Emails arrive the morning before the order feed catches up, so a delay in an email is not counted twice. Scenario letters refer to data/synthetic/mock/SCENARIOS.md.",
   "2026-11-15": ["clear.txt", "hostile.txt", "routine_no_action.txt"],
   "2026-11-16": ["delay_epinephrine.txt", "sneaky.txt"],
   "2026-11-17": ["multi_site_amiodarone.txt", "ambiguous.txt"],

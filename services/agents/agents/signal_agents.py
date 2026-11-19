@@ -33,7 +33,7 @@ MIN_CONFIDENCE = 0.7
 
 MODEL_ERRORS = (RuntimeError, ValueError, BotoCoreError, ClientError)
 
-MOCK_DIR = Path(__file__).resolve().parents[3] / "mock"
+MOCK_DIR = Path(__file__).resolve().parents[3] / "data" / "synthetic" / "mock"
 
 logger = logging.getLogger(__name__)
 
@@ -661,7 +661,7 @@ def process_email(email: str, data=None, llm: LLM | None = None, today: date | N
     calculation -> planning agent -> Python transfer verification -> human.
 
     data:  anything with CsvData's methods (drug, stock, orders, ...). Defaults
-           to default_data(): Postgres when AGENT_DATA_SOURCE=postgres, else mock/.
+           to default_data(): Postgres when AGENT_DATA_SOURCE=postgres, else data/synthetic/mock/.
     llm:   model call, defaults to Bedrock. Tests pass a fake.
     today: defaults to MOCK_TODAY or the system date.
     """
@@ -731,7 +731,7 @@ def main():
     parser.add_argument(
         "--db",
         action="store_true",
-        help="Read stock, orders and drugs from Postgres (DATABASE_URL_READONLY) instead of mock/ CSVs",
+        help="Read stock, orders and drugs from Postgres (DATABASE_URL_READONLY) instead of data/synthetic/mock/ CSVs",
     )
 
     parser.add_argument(

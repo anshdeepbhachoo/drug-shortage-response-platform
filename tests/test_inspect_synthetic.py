@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = sys.executable
-MOCK = ROOT / "mock"
+MOCK = ROOT / "data" / "synthetic" / "mock"
 PROTECTED = ("clear.txt", "ambiguous.txt", "hostile.txt", "sneaky.txt")
 
 
@@ -27,7 +27,7 @@ def test_protected_demo_assets_intact():
         assert (MOCK / "emails" / name).exists()
     assert (MOCK / "followup" / "transfer_requests.csv").exists()
     assert (MOCK / "followup" / "replies.json").exists()
-    # Original cyclo demo numbers still in active mock/
+    # Original cyclo demo numbers still in active data/synthetic/mock/
     text = (MOCK / "inventory.csv").read_text(encoding="utf-8")
     assert "A,99000001,60,2026-11-15" in text
     assert "B,99000001,400,2026-11-15" in text

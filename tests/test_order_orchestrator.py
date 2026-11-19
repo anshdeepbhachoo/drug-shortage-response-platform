@@ -1,6 +1,6 @@
 """The order orchestrator agent and its channel sub-agents.
 
-Suppliers (mock/orders/supplier_channels.json): Meridian Pharma through the hospital ERP (SAP S/4HANA);
+Suppliers (data/synthetic/mock/orders/supplier_channels.json): Meridian Pharma through the hospital ERP (SAP S/4HANA);
 Apex Sterile by EDI (which rejects: ship-to not set up, a problem of that system) then its portal;
 Northgate Labs through its portal (which rejects: credit hold, a problem a person must sort out) then EDI;
 email for procurement is every supplier's last channel.

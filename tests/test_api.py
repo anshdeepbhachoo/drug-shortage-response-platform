@@ -23,7 +23,7 @@ from ingestion.synthetic_loader import load_progression  # noqa: E402
 from tests.test_agent import FakeModel, assessment, transfer  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-DAYS = ROOT / "scenarios" / "progression" / "days"
+DAYS = ROOT / "data" / "synthetic" / "progression" / "days"
 URL = os.environ.get("TEST_DATABASE_URL")
 
 pytestmark = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")

@@ -42,7 +42,7 @@ class Decision(BaseModel):
 
 
 class RunEmail(BaseModel):
-    email: str = Field(description="File name in mock/emails, e.g. clear.txt")
+    email: str = Field(description="File name in data/synthetic/mock/emails, e.g. clear.txt")
     as_of: date | None = None
 
 
@@ -188,8 +188,8 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
 
         path = (EMAILS / Path(body.email).name)
         if not path.is_file():
-            raise HTTPException(404, f"No email {body.email!r} in mock/emails")
-        source_ref = str(path.relative_to(EMAILS.parents[1]))
+            raise HTTPException(404, f"No email {body.email!r} in data/synthetic/mock/emails")
+        source_ref = path.relative_to(EMAILS.parents[1]).as_posix()  # "mock/emails/<name>"
         existing = guard(lambda: open_event_for(write_engine, source_ref))
         if existing:
             raise HTTPException(409, f"{body.email} is already being handled as alert {existing}. "

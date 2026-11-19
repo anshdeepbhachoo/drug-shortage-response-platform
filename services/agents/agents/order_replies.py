@@ -9,7 +9,7 @@ follow-up does (followup.py):
    the reply's scripted offline_reading is used.
 3. Code checks the reading (check_order_reading) before anything acts on it.
 
-Replies come from mock/orders/order_replies.json in the demo. An order only exists
+Replies come from data/synthetic/mock/orders/order_replies.json in the demo. An order only exists
 once a person approves it, so each synthetic reply is timed from that approval and
 filled in from the order (quantities, dates, reference).
 """
@@ -26,7 +26,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parents[3]
-REPLIES_PATH: Path | None = ROOT / "mock" / "orders" / "order_replies.json"
+REPLIES_PATH: Path | None = ROOT / "data" / "synthetic" / "mock" / "orders" / "order_replies.json"
 
 MIN_READING_CONFIDENCE = 0.7
 MAX_DATE_DAYS = 120      # a supplier date further out than this is treated as a misreading
@@ -117,7 +117,7 @@ def check_order_reading(reading: OrderReplyReading, qty: int, today: date) -> tu
 
 
 # ---------------------------------------------------------
-# Synthetic replies (mock/orders/order_replies.json)
+# Synthetic replies (data/synthetic/mock/orders/order_replies.json)
 # ---------------------------------------------------------
 
 _PLACEHOLDER = re.compile(r"\{(qty|part|order_id|drug|site|expected)(?:\+(\d+))?\}")

@@ -3,6 +3,8 @@
 !.env.example
 data/*
 !data/.gitkeep
+# synthetic demo data is tracked; data/followup and other runtime output are not
+!data/synthetic/
 .venv/
 __pycache__/
 *.py[cod]

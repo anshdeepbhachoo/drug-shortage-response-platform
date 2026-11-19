@@ -189,7 +189,7 @@ services/agents     Agents, planner, checks, approvals, follow-up, daily run
 services/agents/graph  LangGraph: the agentic pipeline (pipeline.py) and the daily schedule (daily.py)
 ingestion           Health Canada and synthetic-data loaders, nightly workflow
 migrations          Alembic migrations (raw SQL)
-scenarios/progression  10-day synthetic scenario and inbox schedule
+data/synthetic/progression  10-day synthetic scenario and inbox schedule
 mock                Single-day mock data and supplier emails
 docker              Postgres init (database roles)
 docs                Project overview, team workflow, data notes
@@ -282,7 +282,7 @@ Pick who you are with **Viewing as** at the bottom of the sidebar.
 .venv/bin/python -m ingestion.workflow nightly --dry-run
 
 # One supplier email through the signal pipeline
-.venv/bin/python -m services.agents.agents.signal_agents mock/emails/clear.txt
+.venv/bin/python -m services.agents.agents.signal_agents data/synthetic/mock/emails/clear.txt
 
 # Plans waiting for approval
 .venv/bin/python -m services.agents.store.approvals list
@@ -314,7 +314,7 @@ docker stop dsr-test
 - **Supplier emails need the AI.** With no model configured they show as "waiting: reading emails needs the model".
 - **If the AI fails partway through a run** (for example an expired token), plans for that run are not made. Switch the planner to "Rules planning" and run the day again.
 - **The synthetic scenario doesn't react to decisions.** Approved transfers don't show up in later days' stock and hospitals never confirm shipments, so follow-up nudges and then escalates.
-- **`tests/test_progression` regenerates `scenarios/progression`** with Windows line endings. If those files show as changed after running tests, restore them with `git checkout -- scenarios/progression`.
+- **`tests/test_progression` regenerates `data/synthetic/progression`** with Windows line endings. If those files show as changed after running tests, restore them with `git checkout -- data/synthetic/progression`.
 
 ## Working together
 
@@ -332,5 +332,5 @@ docker stop dsr-test
 - [Team and workflow](docs/TEAM_AND_WORKFLOW.md)
 - [Agents](services/agents/README.md): design rules and the signal and follow-up pipelines
 - [Follow-up agent](docs/FOLLOW_UP_AGENT.md)
-- [Synthetic data](docs/SYNTHETIC_DATA.md) and [mock data](mock/README.md)
-- [Progression scenario](scenarios/progression/README.md)
+- [Synthetic data](docs/SYNTHETIC_DATA.md) and [mock data](data/synthetic/mock/README.md)
+- [Progression scenario](data/synthetic/progression/README.md)

@@ -45,7 +45,7 @@ Module paths in the tables below are relative to `services/agents/`.
 
 | File | Purpose |
 |---|---|
-| `data/data.py` | `CsvData`: loads the mock CSVs in `mock/` (drugs, sites, usage, inventory, open orders, substitutions). `stock(din)` returns on-hand, daily use and days of supply per site. `data/db_data.py` (`PostgresData`) is the same interface over the database. Synthetic-data handoff: [`docs/SYNTHETIC_DATA.md`](../../docs/SYNTHETIC_DATA.md). Inspect helper: `python -m scripts.synthetic.inspect_synthetic summary`. |
+| `data/data.py` | `CsvData`: loads the mock CSVs in `data/synthetic/mock/` (drugs, sites, usage, inventory, open orders, substitutions). `stock(din)` returns on-hand, daily use and days of supply per site. `data/db_data.py` (`PostgresData`) is the same interface over the database. Synthetic-data handoff: [`docs/SYNTHETIC_DATA.md`](../../docs/SYNTHETIC_DATA.md). Inspect helper: `python -m scripts.synthetic.inspect_synthetic summary`. |
 | `agents/tools.py` | `AgentTool` (one tool: name, description, JSON schema, Python function) and `ToolRegistry` (the allow-list an agent may call; rejects unknown tools and bad arguments). `build_tool_registries()` makes the assessment and planning tool sets. |
 | `agents/schemas.py` | Pydantic models: `SupplyEvent`, `Move`, `PlanOption`, `PlanSet`. |
 | `rules/security.py` | `inspect_supplier_email()`: regex screen for instruction override, role impersonation and unauthorised-action wording. |
@@ -65,7 +65,7 @@ email ─► length check ─► security screen ─► assessment agent ─► 
 
 Key functions: `run_agent()` (Bedrock Converse tool loop, max 8 rounds, temperature 0), `ask_for_model()` (JSON extraction + schema validation + 1 retry), `assess_email()`, `plan_response()`, `process_email()`.
 
-Run: `python -m services.agents.agents.signal_agents mock/emails/clear.txt`
+Run: `python -m services.agents.agents.signal_agents data/synthetic/mock/emails/clear.txt`
 
 ### Follow-up pipeline (Aryan)
 
@@ -76,7 +76,7 @@ Run: `python -m services.agents.agents.signal_agents mock/emails/clear.txt`
 | `agents/followup.py` | `FollowUpAgent`: the reader agent and decision agent (prompts, tools, validated calls), the main `check()` flow, `tick()` for the clock, audit logging, and `bedrock_planner()` which reuses `plan_response()` for live replans. |
 | `agents/followup_demo.py` | Simulated-clock demo (4 evenings), offline or `--live`. Writes logs to `data/followup/`. |
 
-Data: `mock/followup/transfer_requests.csv`, `mock/followup/replies.json`. Tests: `tests/test_followup.py`.
+Data: `data/synthetic/mock/followup/transfer_requests.csv`, `data/synthetic/mock/followup/replies.json`. Tests: `tests/test_followup.py`.
 
 ### Orders
 
@@ -96,7 +96,7 @@ Each reply is screened by `rules/security.py`, read by the reader agent (or its 
 | backordered / cancelled | Replans without that supplier, or escalates when stock is too short |
 | question, flagged, unreadable, failed checks | Escalates for a person |
 
-Data: `mock/orders/order_replies.json`. Replies are timed from the order's approval and filled in from the order. `ORDER_REPLY_STORY` picks the story (`mixed` by default, `supply_problems`, or `none`). Tests: `tests/test_orders.py`, `tests/test_order_agent.py`, `tests/test_order_replies.py`.
+Data: `data/synthetic/mock/orders/order_replies.json`. Replies are timed from the order's approval and filled in from the order. `ORDER_REPLY_STORY` picks the story (`mixed` by default, `supply_problems`, or `none`). Tests: `tests/test_orders.py`, `tests/test_order_agent.py`, `tests/test_order_replies.py`.
 
 **Escalations and notifications** (`store/escalations.py`).
 
@@ -163,7 +163,7 @@ Without Bedrock, the rules take every step in the same order, and the UI shows *
 
 A new system (Oracle, Ariba, a GPO portal) takes three things: a connector, a sub-agent description in `EXPERTISE`, and a line in the supplier settings.
 
-**Demo suppliers** (`mock/orders/supplier_channels.json`):
+**Demo suppliers** (`data/synthetic/mock/orders/supplier_channels.json`):
 
 | Supplier | Channels | What happens |
 |---|---|---|
@@ -200,7 +200,7 @@ All commands from the repo root.
 
 ```bash
 # Signal → plan
-.venv/bin/python -m services.agents.agents.signal_agents mock/emails/clear.txt
+.venv/bin/python -m services.agents.agents.signal_agents data/synthetic/mock/emails/clear.txt
 
 # Follow-up demo: offline (no AWS), live (Bedrock), with step trace, or JSON
 .venv/bin/python -m services.agents.agents.followup_demo

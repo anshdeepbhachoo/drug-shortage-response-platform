@@ -11,7 +11,7 @@ from services.agents.rules.rules_planner import rules_planner
 from services.agents.agents.schemas import SupplyEvent
 
 ROOT = Path(__file__).resolve().parents[1]
-DAYS = ROOT / "scenarios" / "progression" / "days"
+DAYS = ROOT / "data" / "synthetic" / "progression" / "days"
 BASELINE = ROOT / "tests" / "fixtures" / "baseline_three_site"
 
 
@@ -77,7 +77,7 @@ def test_inbox_schedule_covers_every_day_and_names_real_files():
     assert sorted(inbox) == [f"2026-11-{d}" for d in range(15, 25)]
     for files in inbox.values():
         for name in files:
-            assert (ROOT / "mock" / "emails" / name).is_file(), name
+            assert (ROOT / "data" / "synthetic" / "mock" / "emails" / name).is_file(), name
 
 
 # ---------------------------------------------------------
