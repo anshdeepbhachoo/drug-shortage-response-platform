@@ -106,9 +106,6 @@ class OrchestratorSummary(BaseModel):
     summary: str = Field(min_length=1, max_length=600)
 
 
-FINISHED = {"accepted": "placed", "ready_to_send": "handed_to_procurement", "escalated": "escalated"}
-
-
 class ReleaseError(Exception):
     """The order cannot be released. Nothing was written."""
 

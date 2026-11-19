@@ -75,7 +75,6 @@ Return only JSON:
  "summary": "one or two sentences for the orchestrator and for procurement"}
 """
 
-OUTCOMES = ("accepted", "handed_to_person", "try_other_channel", "needs_person", "not_submitted")
 # A refusal about the account or relationship: a person must act (the rule reading of a rejection).
 NEEDS_PERSON = re.compile(r"credit|hold|suspend|account|contract|pric|blocked|not authori[sz]ed|terms", re.IGNORECASE)
 
@@ -244,7 +243,3 @@ class ChannelAgent:
         report = self._rule_report()
         self.steps.append(f"Rules reported {report.outcome}.")
         return report, "rule"
-
-
-def channel_agent(name: str, ctx: OrderContext, run_mode: str, llm: LLM | None = None, brief: str = "") -> ChannelAgent:
-    return ChannelAgent(CHANNELS[name], ctx, run_mode, llm, brief)

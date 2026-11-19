@@ -200,12 +200,6 @@ def plan_needs_redo(engine: Engine, data, event_id: str, alert: dict) -> str | N
     return "plan no longer safe with today's stock"
 
 
-def drug_has_open_event(engine: Engine, din: str) -> bool:
-    with engine.connect() as conn:
-        return conn.execute(text("SELECT 1 FROM supply_event WHERE din = :din AND status = 'open' LIMIT 1"),
-                            {"din": din}).first() is not None
-
-
 # ---------------------------------------------------------
 # The day
 # ---------------------------------------------------------
@@ -514,12 +508,6 @@ def plan_for_drug(
         saved = save_pipeline_result(write_engine, result, **save)
     return {"status": result["status"], "event_id": saved["event_id"], "plan_id": saved["plan_id"],
             "planner": "rules" if use_rules else "planning agent", "shortfall": result.get("shortfall", {})}
-
-
-def days_run(engine: Engine) -> list[str]:
-    with engine.connect() as conn:
-        return [row[0] for row in conn.execute(text(
-            "SELECT DISTINCT object FROM audit_log WHERE action = 'Daily run' ORDER BY object"))]
 
 
 def main(argv: list[str] | None = None) -> int:
