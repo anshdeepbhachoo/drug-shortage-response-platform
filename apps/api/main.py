@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -23,9 +23,9 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from apps.api.state import EMAILS, build_state
-from services.agents.approvals import ALL_ROLES, ApprovalError, approve_plan, reject_plan
-from services.agents.daily_run import model_available, uses_graph
-from services.agents.db_data import PostgresData
+from services.store.approvals import ALL_ROLES, ApprovalError, approve_plan, reject_plan
+from services.pipeline.daily_run import model_available, uses_graph
+from services.data.db_data import PostgresData
 
 # The UI's people and the approval roles they hold.
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class Decision(BaseModel):
 
 
 class RunEmail(BaseModel):
-    email: str = Field(description="File name in mock/emails, e.g. clear.txt")
+    email: str = Field(description="File name in data/synthetic/mock/emails, e.g. clear.txt")
     as_of: date | None = None
 
 
@@ -140,7 +140,7 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
 
         if not uses_graph():
             return
-        from services.agents.graph.pipeline import AgentPipeline
+        from services.pipeline.graph.pipeline import AgentPipeline
 
         try:
             with read_engine.connect() as conn:
@@ -183,13 +183,13 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
     def run_agent_on_email(body: RunEmail):
         """Run the signal pipeline on a mock supplier email and save the result. Uses Bedrock unless a model is injected."""
 
-        from services.agents.agent import process_email
-        from services.agents.results_store import open_event_for, save_pipeline_result
+        from services.agents.signals.process import process_email
+        from services.store.results_store import open_event_for, save_pipeline_result
 
         path = (EMAILS / Path(body.email).name)
         if not path.is_file():
-            raise HTTPException(404, f"No email {body.email!r} in mock/emails")
-        source_ref = str(path.relative_to(EMAILS.parents[1]))
+            raise HTTPException(404, f"No email {body.email!r} in data/synthetic/mock/emails")
+        source_ref = path.relative_to(EMAILS.parents[1]).as_posix()  # "mock/emails/<name>"
         existing = guard(lambda: open_event_for(write_engine, source_ref))
         if existing:
             raise HTTPException(409, f"{body.email} is already being handled as alert {existing}. "
@@ -206,7 +206,7 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
     def run_simulated_day(body: RunDay):
         """Run one simulated day: ingest, inbox, stock watch, shortage reports, follow-up."""
 
-        from services.agents.daily_run import run_day
+        from services.pipeline.daily_run import run_day
 
         return guard(lambda: run_day(write_engine, read_engine, body.day, llm=llm,
                                      planner=body.planner, max_plans=body.max_plans))
@@ -215,7 +215,7 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
     def plan_drug(din: str, body: PlanDrug):
         """The supply manager asks for a plan for one drug now (Stock page)."""
 
-        from services.agents.daily_run import plan_for_drug
+        from services.pipeline.daily_run import plan_for_drug
 
         if UI_ROLES.get(body.role, body.role) != "supply_manager":
             raise HTTPException(403, "Only the supply manager can raise a plan from the Stock page.")
@@ -226,7 +226,7 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
     def order_status(order_id: str, body: OrderStatus):
         """A person records what happened to an approved order (placed, received, ...). Nothing is sent."""
 
-        from services.agents.order_agent import OrderStatusError, record_order_status
+        from services.store.order_db import OrderStatusError, record_order_status
 
         try:
             at = datetime.combine(body.as_of, time(12)) if body.as_of else None
@@ -240,8 +240,8 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
         """Procurement releases an order the orchestrator held (above the auto-submit limit); it is then placed
         through the supplier's channel. Simulated unless ORDER_SUBMISSION=live."""
 
-        from services.agents.order_agent import resolve_model
-        from services.agents.ordering.orchestrator import ReleaseError, release_order
+        from services.agents.bedrock import resolve_model
+        from services.agents.orders.placement.orchestrator import ReleaseError, release_order
 
         try:
             at = datetime.combine(body.as_of, time(12)) if body.as_of else None
@@ -256,9 +256,9 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
     @app.post("/api/escalations/{object_id}")
     def escalate_item(object_id: str, body: Escalation):
         """A person escalates an approved order or transfer to the role that acts on it (code picks the role:
-        services/agents/escalations.py). It shows on that role's overview as a notification."""
+        services/store/escalations.py). It shows on that role's overview as a notification."""
 
-        from services.agents.escalations import EscalationError, escalate
+        from services.store.escalations import EscalationError, escalate
 
         try:
             at = datetime.combine(body.as_of, time(12)) if body.as_of else None
@@ -269,7 +269,7 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
 
     @app.post("/api/notifications/{notification_id}/read")
     def read_notification(notification_id: str, body: NotificationRead):
-        from services.agents.escalations import EscalationError, mark_read
+        from services.store.escalations import EscalationError, mark_read
 
         try:
             at = datetime.combine(body.as_of, time(12)) if body.as_of else None
@@ -280,8 +280,9 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
 
     @app.post("/api/followup/run")
     def run_followup_check(body: RunFollowup):
-        from services.agents.followup_db import run_followup
-        from services.agents.order_agent import resolve_model, run_order_followup
+        from services.store.followup_db import run_followup
+        from services.agents.bedrock import resolve_model
+        from services.store.order_db import run_order_followup
 
         def run():
             data = PostgresData(read_engine, as_of=body.as_of)

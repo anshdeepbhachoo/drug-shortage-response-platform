@@ -3,6 +3,8 @@
 !.env.example
 data/*
 !data/.gitkeep
+# synthetic demo data is tracked; data/followup and other runtime output are not
+!data/synthetic/
 .venv/
 __pycache__/
 *.py[cod]
@@ -15,6 +17,10 @@ htmlcov/
 coverage/
 evaluation/
 node_modules/
+*.tsbuildinfo
+*.log
+# local Claude Code settings and worktrees
+.claude/
 dist/
 .idea/
 .vscode/

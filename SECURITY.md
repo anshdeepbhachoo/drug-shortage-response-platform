@@ -1,6 +1,6 @@
 # Security
 
-MediFlow is a hackathon project that models hospital drug-shortage workflows. It is not a production clinical system and does not have a formal vulnerability-response program.
+The drug shortage response platform is a hackathon project that models hospital drug-shortage workflows. It is not a production clinical system and does not have a formal vulnerability-response program.
 
 ## Reporting a concern
 

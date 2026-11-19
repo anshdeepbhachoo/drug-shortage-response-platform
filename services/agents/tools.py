@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from services.agents.data import CsvData
+from services.data.data import CsvData
 
 
 @dataclass(frozen=True)

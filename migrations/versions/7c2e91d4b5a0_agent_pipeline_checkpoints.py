@@ -4,7 +4,7 @@ Revision ID: 7c2e91d4b5a0
 Revises: 3a5369ccfac1
 Create Date: 2026-11-17 22:00:00.000000
 
-Tables where the LangGraph agentic pipeline (services/agents/graph/pipeline.py) keeps
+Tables where the LangGraph agentic pipeline (services/pipeline/graph/pipeline.py) keeps
 each alert's position in its workflow, so an alert can wait days for approval or follow-up
 and resume where it stopped.
 

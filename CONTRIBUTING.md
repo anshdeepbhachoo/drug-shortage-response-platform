@@ -1,6 +1,6 @@
-# Contributing to MediFlow
+# Contributing to the shortage response platform
 
-Thank you for helping improve MediFlow. Keep changes small, reviewable, and respectful of teammates' work.
+Thank you for helping improve the platform. Keep changes small, reviewable, and respectful of teammates' work.
 
 ## Branches
 
@@ -27,7 +27,7 @@ Do not delete, rename, or force-push shared branches. Leave unfinished teammate 
 
 - Run the checks that apply to your change:
   - Python: `.venv/bin/python -m pytest -q` (or Windows equivalent)
-  - Frontend: `cd apps/web && npm test && npm run build`
+  - Frontend: `cd apps/web && npm test && npm run build` (vitest, then type-check and build)
 - Prefer conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`).
 - Never commit secrets, `.env` files, API keys, or credentials.
 - Do not rewrite shared Git history.
