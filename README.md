@@ -39,14 +39,103 @@ Takes a hospital network from a drug shortage signal to an approved, auditable r
 
 ## How it fits together
 
+### Technical architecture
+
+```mermaid
+flowchart LR
+    subgraph sources["Data sources"]
+        dpd["Health Canada<br/>Drug Product Database API"]
+        hps["Health Product<br/>Shortages Canada API"]
+        syn["Synthetic hospital data<br/>and supplier emails<br/>(data/synthetic/)"]
+    end
+
+    ing["ingestion/<br/>Python · httpx<br/>lineage and quarantine"]
+    db[("PostgreSQL 16 (Docker)<br/>SQLAlchemy · Alembic<br/>stock · alerts · plans · decisions<br/>append-only audit log<br/>LangGraph checkpoints")]
+
+    subgraph backend["services/ (Python 3.14)"]
+        pipe["pipeline/<br/>LangGraph: daily graph and<br/>one alert graph per drug"]
+        agents["agents/<br/>signals · follow-up · orders<br/>Pydantic-validated output"]
+        rules["rules/<br/>risk · code checks · security screen<br/>rules planner"]
+        store["store/<br/>approvals · results · escalations"]
+    end
+
+    bedrock["Amazon Bedrock (optional)<br/>Claude Haiku 4.5<br/>Converse API via boto3"]
+    channels["Supplier channels<br/>SAP · EDI X12 850 · portal · email<br/>(simulated)"]
+    api["apps/api<br/>FastAPI · Uvicorn"]
+    web["apps/web<br/>React · TypeScript · Vite"]
+    people(["Supply manager · pharmacist<br/>procurement · auditor"])
+
+    dpd --> ing
+    hps --> ing
+    syn --> ing
+    ing --> db
+    people --> web
+    web -- "/api" --> api
+    api --> pipe
+    api --> store
+    pipe --> agents
+    agents --> rules
+    agents -. "model calls" .-> bedrock
+    agents -. "read-only role" .-> db
+    pipe --> store
+    store --> db
+    agents -. "simulated submit" .-> channels
 ```
- Health Canada APIs ─┐                          ┌─► Approvals (people decide)
- Synthetic hospital  ├─► ingestion ─► Postgres ─┤
- data and emails ────┘                          └─► daily run ─► stock watch ─► planner ─► code checks
-                                                       │            (AI or rules)
-                                                       ├─► follow-up on approved transfers
-                                                       └─► order agent / orchestrator (simulated channels)
- Web app (apps/web) ◄── API (apps/api) ◄── Postgres
+
+Without Bedrock settings, every AI step falls back to code: the rules planner proposes the options, the follow-up and order checks use their fallback rules, and supplier emails wait until a model is configured. The app runs end to end either way.
+
+### Agent architecture
+
+```mermaid
+flowchart TB
+    email["Supplier email<br/>(untrusted)"] --> screen["Security screen"]
+    screen -- clean --> assess["Assessment agent<br/>drug · delay · confidence"]
+    screen -- flagged --> held(["Held for a person"])
+    assess --> gate{"Code gate<br/>schema · confidence ≥ 0.7<br/>known drug"}
+    report["Health Canada<br/>shortage report"] --> alert
+    watch["Stock watch<br/>days left by criticality"] --> alert
+    gate -- SupplyEvent --> alert["Living alert<br/>one per drug"]
+    alert --> risk["Risk calculation<br/>who runs short, by how much"]
+    risk --> plan["Planning agent<br/>transfers · substitutes · orders"]
+    risk -. "no model" .-> rplan["Rules planner"]
+    plan --> checks{"Code checks<br/>donor floor · approved substitutes"}
+    rplan --> checks
+    checks -. "failed: one retry with reasons" .-> plan
+    checks -- "verified options" --> approve(["A person approves one option"])
+    approve -- transfer --> fu["Follow-up agent<br/>reader + decider, each evening"]
+    approve -- order --> orderagent["Order agent<br/>drafts request · reads supplier replies"]
+    orderagent --> orchestrator["Order orchestrator agent<br/>picks channel · reads results"]
+    orchestrator --> subagents["Channel sub-agents<br/>SAP · EDI · portal · email"]
+    subagents --> conn["Connectors<br/>build and check payload<br/>(simulated submit)"]
+    fu -. replan .-> risk
+    orderagent -. replan .-> risk
+    fu -- escalate --> notify(["Role notifications"])
+    orderagent -- escalate --> notify
+    orchestrator -- "a person must act" --> notify
+
+    classDef ai fill:#ede7f6,stroke:#5e35b1,color:#311b92
+    classDef code fill:#e3f2fd,stroke:#1e88e5,color:#0d47a1
+    classDef person fill:#e8f5e9,stroke:#43a047,color:#1b5e20
+    classDef input fill:#fff3e0,stroke:#fb8c00,color:#e65100
+    class assess,plan,fu,orderagent,orchestrator,subagents ai
+    class screen,gate,alert,risk,rplan,checks,watch,conn code
+    class approve,held,notify person
+    class email,report input
+```
+
+Purple boxes are AI agents (Claude on Bedrock), blue boxes are code, green boxes are people, and orange boxes are outside input. Agents never message each other directly: they hand off typed objects (`SupplyEvent`, `PlanSet`, approved orders) through code gates.
+
+**Inside one agent.** Each agent runs our own tool loop on boto3 (`run_agent()` in `services/agents/bedrock.py`), with no agent framework. LangGraph orchestrates the steps between agents.
+
+```mermaid
+flowchart LR
+    task["Prompt and<br/>tool specs"] --> claude["Claude on Bedrock<br/>Converse API · temperature 0"]
+    claude -- "tool call" --> reg["ToolRegistry<br/>allow-list · argument checks"]
+    reg --> data["Read-only data<br/>PostgresData or CSV"]
+    data -- "result, at most 8 rounds" --> claude
+    claude -- "final JSON" --> schema{"Pydantic schema<br/>one retry with the errors"}
+    schema -- valid --> codecheck{"Code checks"}
+    codecheck -- passed --> saved(["Saved for a person to decide"])
 ```
 
 - **One living alert per drug.** The stock watch raises it; emails and shortage reports add evidence and refresh its plan instead of opening duplicates.
