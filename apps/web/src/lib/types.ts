@@ -1,0 +1,174 @@
+export type Role = "supply" | "pharmacist" | "procurement" | "auditor";
+export type Actor = Role | "system" | "agent" | "solver";
+export type Tier = "green" | "amber" | "red";
+
+export interface Site {
+  id: string;
+  name: string;
+  short: string;
+}
+
+export interface Drug {
+  id: string;
+  name: string;
+  form: string;
+  unit: string;
+  criticalList: boolean;
+  dpdRef: string;
+}
+
+export interface Order {
+  id: string;
+  qty: number;
+  etaDay: number;
+  supplier: string;
+  status: "on-time" | "delayed" | "expedited";
+  originalEtaDay?: number;
+}
+
+export interface StockLine {
+  siteId: string;
+  drugId: string;
+  onHand: number;
+  dailyUsage: number;
+  safetyDays: number;
+  orders: Order[];
+  inventoryRef: string;
+  usageRef: string;
+}
+
+export interface SupplyEvent {
+  id: string;
+  drugId: string;
+  siteId?: string;
+  kind: "delay" | "shortage" | "usage-spike";
+  title: string;
+  summary: string;
+  source: "supplier-email" | "hc-shortage-api" | "site-report";
+  sourceRef: string;
+  confidence: number;
+  atMin: number;
+  status: "open" | "mitigated" | "monitoring";
+  resupplyDay?: number;
+  /** Live data: every signal that fed this alert (stock watch, emails, reports, people). */
+  evidence?: { source: string; ref: string; summary: string; at?: string }[];
+  /** Live data: what is happening with its current plan, in words. */
+  planState?: string;
+  /** Live data: hospitals affected. */
+  sites?: string[];
+}
+
+export interface Transfer {
+  from: string;
+  to: string;
+  qty: number;
+}
+
+export interface PlanOrder {
+  qty: number;
+  etaDay: number;
+  supplier: string;
+  premiumPct: number;
+  /** The hospital the order is for (live data). The scripted demo uses the alert's hospital. */
+  to?: string;
+  /** ISO date the order is expected (live data: today plus the standard lead time). */
+  expectedDate?: string;
+  /** Approved orders only: "in-stock-line" once placed (the hospital's stock line counts it), "failed" when
+   * cancelled or replanned. Either way the plan's projection leaves it out, so nothing counts twice. */
+  projection?: "in-stock-line" | "failed";
+}
+
+export interface ConstraintCheck {
+  label: string;
+  ok: boolean;
+  hard: boolean;
+  detail: string;
+}
+
+export type PlanStatus =
+  | "proposed"
+  | "pending-approval"
+  | "approved"
+  | "rejected"
+  | "broken"
+  | "superseded";
+
+export interface Plan {
+  id: string;
+  eventId: string;
+  drugId: string;
+  solverRun: string;
+  rank: number;
+  title: string;
+  transfers: Transfer[];
+  orders: PlanOrder[];
+  conservationUsage?: number;
+  score: number;
+  cost: string;
+  leadTime: string;
+  explanation: string;
+  citations: string[];
+  status: PlanStatus;
+  decisionNote?: string;
+  /** Live data: hospitals this option involves (at risk, or sending/receiving stock). */
+  sites?: string[];
+  createdAt?: string;
+  /** Live data: what kind of option this is, and which roles may choose it. */
+  optionType?: "transfer" | "order" | "transfer_order" | "substitute" | "conserve" | "escalate";
+  chooseRoles?: Role[];
+}
+
+export interface Extraction {
+  eventType: string;
+  drug: string;
+  drugMatch: string;
+  poRef?: string;
+  qty?: number;
+  originalEta?: string;
+  newEta?: string;
+  site?: string;
+  confidence: number;
+  excerpt: string;
+  flags: string[];
+}
+
+export interface Email {
+  id: string;
+  from: string;
+  subject: string;
+  atMin: number;
+  body: string;
+  outcome: "accepted" | "quarantined";
+  extraction: Extraction;
+}
+
+export interface Draft {
+  id: string;
+  planId: string;
+  kind: "Transfer request" | "Purchase order" | "Site notice";
+  to: string;
+  subject: string;
+  body: string;
+  status: "draft" | "sent-manually";
+}
+
+export interface AuditEntry {
+  id: string;
+  atMin: number;
+  actor: Actor;
+  actorName: string;
+  action: string;
+  object: string;
+  detail: string;
+  refs: string[];
+}
+
+export interface SourceRecord {
+  id: string;
+  kind: string;
+  label: string;
+  detail: string;
+  origin: "real (cached)" | "synthetic" | "platform";
+  table?: string;
+  sha256?: string;
+}

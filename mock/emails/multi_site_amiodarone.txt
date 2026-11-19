@@ -1,0 +1,4 @@
+From: orders@northgatelabs.example
+Subject: Network shortage — Amiodarone 150 mg/3 mL
+
+A fill-finish disruption is affecting Amiodarone 150 mg/3 mL ampules supplied to multiple hospitals, including orders O-1007 and O-1008. Expect at least a two-week delay.

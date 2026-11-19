@@ -1,0 +1,4 @@
+From: shipping@apexsterile.example
+Subject: Partial release for order O-1006
+
+We can release 40 of the 150 vials of Propofol 10 mg/mL (order O-1006) this week. The remaining quantity is not yet scheduled.

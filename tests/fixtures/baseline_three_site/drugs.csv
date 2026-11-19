@@ -1,0 +1,11 @@
+din,name,criticality
+99000001,Cyclophosphamide 500 mg vial,critical
+99000002,Cyclophosphamide 1000 mg vial,critical
+99000003,Vasopressin 20 units/mL injection,critical
+99000004,Insulin regular 100 units/mL vial,high
+99000005,Cisplatin 50 mg/50 mL vial,critical
+99000006,Ondansetron 4 mg/2 mL injection,medium
+99000007,Heparin 5000 units/mL vial,high
+99000008,Norepinephrine 4 mg/4 mL vial,critical
+99000009,Vancomycin 1 g vial,medium
+99000010,Dexamethasone 4 mg/mL vial,medium

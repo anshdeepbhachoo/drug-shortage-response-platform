@@ -1,0 +1,4 @@
+From: orders@meridianpharma.example
+Subject: Supply update: Cyclophosphamide 500 mg vial
+
+Due to a manufacturing delay at our fill-finish site, the Cyclophosphamide 500 mg vial (order O-1001) will ship approximately 3 weeks later than planned. Expected availability is now the week of December 7.

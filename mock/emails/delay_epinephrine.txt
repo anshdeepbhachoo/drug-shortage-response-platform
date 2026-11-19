@@ -1,0 +1,4 @@
+From: orders@meridianpharma.example
+Subject: Manufacturing delay — Epinephrine 1 mg/mL ampule
+
+Order O-1005 for Epinephrine 1 mg/mL ampule (DIN 99000011) is delayed approximately three weeks due to a manufacturing interruption. Revised availability is the week of December 5.
