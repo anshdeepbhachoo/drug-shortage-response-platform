@@ -138,7 +138,7 @@ def test_supply_manager_approves_from_the_ui(api_with_plan):
     assert next(p for p in state["plans"] if p["solverRun"] == plan_id)["status"] == "approved"
     approved = next(a for a in state["audit"] if a["action"] == "Approved")
     assert approved["actor"] == "supply" and approved["actorName"] == "Dana Okafor"
-    assert approved["detail"] == 'Option 1 (transfer): transfer 180 from Northside to Central General. Note: "OK"'
+    assert approved["detail"] == 'Transfer: transfer 180 from Northside to Central General. Note: "OK"'
 
 
 def test_role_rules_come_back_as_messages(api_with_plan):

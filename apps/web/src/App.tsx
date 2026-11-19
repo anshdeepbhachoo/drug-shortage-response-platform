@@ -171,6 +171,8 @@ export function App() {
 
   // The alert whose plan was opened from the Alerts page (null: show the newest plan).
   const [focusEvent, setFocusEvent] = useState<string | null>(null);
+  // The option to open in the Approval Queue (clicked on Shortage Alerts).
+  const [focusOption, setFocusOption] = useState<string | null>(null);
   const go = (v: ViewId) => {
     setTouring(false);
     setView(v);
@@ -340,13 +342,14 @@ export function App() {
         {activeView === "alerts" && (
           <Alerts
             focusEvent={focusEvent}
-            go={(v, eventId) => {
+            go={(v, eventId, optionId) => {
               setFocusEvent(eventId ?? null);
+              setFocusOption(optionId ?? null);
               go(v);
             }}
           />
         )}
-        {activeView === "approvals" && <Approvals focusEvent={focusEvent} />}
+        {activeView === "approvals" && <Approvals focusEvent={focusEvent} focusOption={focusOption} />}
         {activeView === "drafts" && <Drafts />}
         {activeView === "audit" && <Audit />}
         {activeView === "data" && <DataSources />}

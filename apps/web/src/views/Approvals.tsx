@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PlanCard } from "../components/PlanCard";
 import { Card, Empty, Origin, PageHead, Status } from "../components/ui";
 import { USERS, drugById, siteName, timeLabel } from "../data/mock";
 import { useStore } from "../lib/store";
 import type { Plan } from "../lib/types";
 
-export function Approvals({ focusEvent }: { focusEvent?: string | null } = {}) {
+export function Approvals({ focusEvent, focusOption }: { focusEvent?: string | null; focusOption?: string | null } = {}) {
   const { state } = useStore();
   const isLive = state.live !== null;
   // Opened from an alert: show that drug's plan first.
@@ -89,7 +89,7 @@ export function Approvals({ focusEvent }: { focusEvent?: string | null } = {}) {
       ) : isLive ? (
         <div className="stack" style={{ gap: 28 }}>
           {groups.map((options) => (
-            <PlanChoice key={options[0].solverRun} options={options} />
+            <PlanChoice key={options[0].solverRun} options={options} focusOption={focusOption} />
           ))}
         </div>
       ) : (
@@ -156,7 +156,13 @@ function ApprovedBy({ plan }: { plan: Plan }) {
 }
 
 /** Live: one plan, all of its options; the person chooses one, or rejects the plan. */
-function PlanChoice({ options }: { options: Plan[] }) {
+function PlanChoice({ options, focusOption }: { options: Plan[]; focusOption?: string | null }) {
+  // Opened from an option on Shortage Alerts: bring that option into view and mark it.
+  useEffect(() => {
+    if (focusOption && options.some((p) => p.id === focusOption)) {
+      document.getElementById(`option-${focusOption}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [focusOption, options]);
   const { state, dispatch, live } = useStore();
   const [note, setNote] = useState("");
   const first = options[0];
@@ -189,6 +195,7 @@ function PlanChoice({ options }: { options: Plan[] }) {
             key={p.id}
             plan={p}
             recommended={p === first}
+            focused={p.id === focusOption}
             actions={
               <>
                 {why && (

@@ -246,7 +246,7 @@ function stageOf(e: AuditEntry): Stage | null {
   if (a === "Order orchestration" || a === "Notification read") return null; // the summary repeats the attempts
   if (a.startsWith("Signal pipeline") || a === "Requested a plan") return "detect";
   if (a === "Approved" || a === "Rejected") return "decide";
-  if (/^Order (placed|email ready|rejected|not submitted|escalated to procurement|held|released)/.test(a)) return "act";
+  if (/^Order (placed|email ready|rejected|not submitted|escalated to procurement|held|released|request drafted)/.test(a)) return "act";
   return "follow";
 }
 

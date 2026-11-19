@@ -873,3 +873,11 @@ details.sources summary::before, details.why summary::after { font-family: var(-
 @media (max-width: 640px) {
   .for-you-list li { flex-direction: column; }
 }
+
+/* Shortage Alerts: the response plan's options as a read-only table (rows open the Approval Queue). */
+.alert-detail .tablewrap { overflow-x: auto; }
+.options-table tbody tr { cursor: pointer; }
+.options-table tbody tr.approved { box-shadow: inset 3px 0 0 var(--good); }
+.options-table .stage-cell { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+/* Approval Queue: the option opened from Shortage Alerts. */
+.plan.focused { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), var(--shadow); scroll-margin: 80px; }

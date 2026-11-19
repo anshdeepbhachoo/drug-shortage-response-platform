@@ -75,7 +75,8 @@ function planSubject(drugName: string, event: { siteId?: string; source: string;
 const MAX = 60;
 const pct = (d: number) => `${(Math.min(d, MAX) / MAX) * 100}%`;
 
-export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; actions?: ReactNode; compact?: boolean; recommended?: boolean }) {
+/** What an option is, in words, and whether it passes the safety rules: shared by the card and the options table. */
+export function usePlanSummary(plan: Plan) {
   const { state } = useStore();
   const event = state.events.find((e) => e.id === plan.eventId)!;
   const drug = drugById(plan.drugId);
@@ -96,6 +97,12 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
   const { checks, feasible } = nonTransfer
     ? { checks: [{ label: nonTransfer.check, ok: true, hard: true, detail: nonTransfer.checkDetail }], feasible: true }
     : evaluatePlan(plan, state.stock, event, siteName, dayLabel, drug.unit);
+  return { event, drug, kind, nonTransfer, title, isSubstitute, substitute, checks, feasible, by: proposedBy(plan) };
+}
+
+export function PlanCard({ plan, actions, compact, recommended, focused }: { plan: Plan; actions?: ReactNode; compact?: boolean; recommended?: boolean; focused?: boolean }) {
+  const { state } = useStore();
+  const { event, drug, kind, nonTransfer, title, isSubstitute, substitute, checks, feasible } = usePlanSummary(plan);
   const hard = checks.filter((c) => c.hard);
   const soft = checks.filter((c) => !c.hard);
   const after = applyPlan(state.stock, plan, event.siteId);
@@ -103,7 +110,7 @@ export function PlanCard({ plan, actions, compact, recommended }: { plan: Plan; 
   const faded = plan.status === "superseded" || plan.status === "rejected";
 
   return (
-    <article className={`plan ${recommended && feasible ? "recommended" : ""} ${faded ? "faded" : ""}`}>
+    <article id={`option-${plan.id}`} className={`plan ${recommended && feasible ? "recommended" : ""} ${focused ? "focused" : ""} ${faded ? "faded" : ""}`}>
       <header className="plan-top">
         <span className="rank">#{plan.rank}</span>
         <div>
