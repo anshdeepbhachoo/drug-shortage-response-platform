@@ -1,13 +1,13 @@
 # Synthetic mock data (active current-day set)
 
-Teammate handoff guide: [`docs/SYNTHETIC_DATA.md`](../../../docs/SYNTHETIC_DATA.md)
+Teammate handoff guide: [`docs/SYNTHETIC_DATA.md`](../docs/SYNTHETIC_DATA.md)
 
 All content here is **synthetic**. DINs starting with `9900` are **not** real Health Canada registrations.
 
-## What `scripts/synthetic/make_mock_data.py` does
+## What `make_mock_data.py` does
 
 ```powershell
-python -m scripts.synthetic.make_mock_data
+python make_mock_data.py
 ```
 
 **Overwrites (by design, for reproducibility):**
@@ -18,9 +18,9 @@ python -m scripts.synthetic.make_mock_data
 - Protected emails: `clear.txt`, `ambiguous.txt`, `hostile.txt`, `sneaky.txt`
 - Entire `followup/` directory
 
-Do **not** put permanent manual edits in the generated CSVs or generated emails. Change `scripts/synthetic/make_mock_data.py` and regenerate instead.
+Do **not** put permanent manual edits in the generated CSVs or generated emails. Change `make_mock_data.py` and regenerate instead.
 
-Phase 1 current-day data is the reproducible starting point for demos and for Phase 2 progression (`data/synthetic/progression/`).
+Phase 1 current-day data is the reproducible starting point for demos and for Phase 2 progression (`scenarios/progression/`).
 
 ## Reported vs applied supplier events
 

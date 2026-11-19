@@ -1,19 +1,19 @@
 # Multi-day synthetic progression
 
-Full teammate guide: [`docs/SYNTHETIC_DATA.md`](../../../docs/SYNTHETIC_DATA.md)
+Full teammate guide: [`docs/SYNTHETIC_DATA.md`](../../docs/SYNTHETIC_DATA.md)
 
-Deterministic 10-day timeline built from Phase 1 `data/synthetic/mock/` **without modifying** `data/synthetic/mock/`.
+Deterministic 10-day timeline built from Phase 1 `mock/` **without modifying** `mock/`.
 
 ## Generate
 
 ```powershell
-python -m scripts.synthetic.generate_progression
+python generate_progression.py
 ```
 
 Optional:
 
 ```powershell
-python -m scripts.synthetic.generate_progression --source data/synthetic/mock --out data/synthetic/progression
+python generate_progression.py --source mock --out scenarios/progression
 ```
 
 `--out` cleanup only deletes `out/days` when that folder is empty or contains only `YYYY-MM-DD` snapshot directories. Unsafe paths (filesystem root, home directory, or a `days/` tree with unrelated files) are rejected.
@@ -27,7 +27,7 @@ Outputs:
 ## Inspect a day with the real loader
 
 ```powershell
-python -c "from services.agents.data.data import CsvData; from pprint import pprint; pprint(CsvData('data/synthetic/progression/days/2026-11-19').stock('99000001'))"
+python -c "from services.agents.data import CsvData; from pprint import pprint; pprint(CsvData('scenarios/progression/days/2026-11-19').stock('99000001'))"
 ```
 
 ## Design notes
