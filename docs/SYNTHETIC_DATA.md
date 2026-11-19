@@ -14,7 +14,7 @@ All DINs `9900xxxx` are **synthetic**. They are not Health Canada registrations.
 | Scenario notes | `data/synthetic/mock/SCENARIOS.md` | Current-day shortage scenarios A–H |
 | Progression report | `data/synthetic/progression/REPORT.md` | Generated day-by-day focus-DIN table |
 
-Agents load CSVs through `services.agents.data.data.CsvData` (unchanged). Default agent path remains `data/synthetic/mock/`.
+Agents load CSVs through `services.data.data.CsvData` (unchanged). Default agent path remains `data/synthetic/mock/`.
 
 ## Quick start (PowerShell)
 
@@ -78,7 +78,7 @@ Quantities below come from the generated progression (`daily_risk.json` / `REPOR
 | Deterministic calculations | days of supply, shortfall, spare units, transfer feasibility checks | Existing `CsvData`, `risk.py`, `tools.get_spare_units`, `checks.py` |
 | Scripted ledger events | `transfer_proposed`, `transfer_rejected`, `followup_check` | `scripts/synthetic/generate_progression.py` demo story — **not** Bedrock agent outputs |
 | Applied stock events | consumption, `transfer_received`, `delivery_received`, usage changes | Progression engine (mathematically accounted) |
-| Live agent demos | `python -m services.agents.agents.signal_agents data/synthetic/mock/emails/clear.txt` | Signal/Planner with Bedrock (optional; needs AWS). Use any day’s folder via `CsvData(path)` if wiring a custom call. |
+| Live agent demos | `python -m services.agents.signal_agents data/synthetic/mock/emails/clear.txt` | Signal/Planner with Bedrock (optional; needs AWS). Use any day’s folder via `CsvData(path)` if wiring a custom call. |
 
 ## Known limitations
 
@@ -103,7 +103,7 @@ docs/SYNTHETIC_DATA.md         # this file
 
 ## Relation to agents
 
-- `services/agents/data/data.py` reads the CSV schemas above.
+- `services/data/data.py` reads the CSV schemas above.
 - Existing email security tests still use `data/synthetic/mock/emails/{clear,hostile,...}.txt`.
 - Follow-up demos still use `data/synthetic/mock/followup/`.
 - Exact classic A/B/C cover_days assertions use `tests/fixtures/baseline_three_site/` so expanded `data/synthetic/mock/` can stay six-hospital.

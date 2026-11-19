@@ -3,7 +3,7 @@
 import json
 from typing import Callable
 
-from services.agents.agents.tools import ToolRegistry
+from services.agents.tools import ToolRegistry
 
 # llm(system_prompt, task, registry) -> model text.
 # agent.run_agent (Bedrock) fits this; tests pass a fake.

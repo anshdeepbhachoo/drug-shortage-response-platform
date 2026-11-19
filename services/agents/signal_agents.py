@@ -11,15 +11,15 @@ from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from services.agents.rules.checks import check_options
-from services.agents.data.data_source import default_data
-from services.agents.agents.model_io import LLM, extract_json, serialize
-from services.agents.agents.orders import arrival_days, combined_option, order_option, with_order_option
-from services.agents.agents.planning import PLANNING_SYSTEM_PROMPT
-from services.agents.rules.risk import calculate_site_risk, cover_days_by_site
-from services.agents.agents.schemas import PlanOption, PlanSet, SupplyEvent
-from services.agents.rules.security import inspect_supplier_email
-from services.agents.agents.tools import build_tool_registries
+from services.rules.checks import check_options
+from services.data.data_source import default_data
+from services.agents.model_io import LLM, extract_json, serialize
+from services.agents.orders import arrival_days, combined_option, order_option, with_order_option
+from services.agents.planning import PLANNING_SYSTEM_PROMPT
+from services.rules.risk import calculate_site_risk, cover_days_by_site
+from services.agents.schemas import PlanOption, PlanSet, SupplyEvent
+from services.rules.security import inspect_supplier_email
+from services.agents.tools import build_tool_registries
 
 # Importing this module has no side effects beyond reading .env: Bedrock
 # settings are checked when a model is actually called, so tests and the API
@@ -33,7 +33,7 @@ MIN_CONFIDENCE = 0.7
 
 MODEL_ERRORS = (RuntimeError, ValueError, BotoCoreError, ClientError)
 
-MOCK_DIR = Path(__file__).resolve().parents[3] / "data" / "synthetic" / "mock"
+MOCK_DIR = Path(__file__).resolve().parents[2] / "data" / "synthetic" / "mock"
 
 logger = logging.getLogger(__name__)
 
@@ -522,7 +522,7 @@ def _pipeline(email: str, data, llm: LLM | None, today: date):
 
 # ---------------------------------------------------------
 # Planning, in steps. _plan_for_event runs them in order; the LangGraph
-# agentic pipeline (services/agents/pipeline/graph/pipeline.py) runs each as a node,
+# agentic pipeline (services/pipeline/graph/pipeline.py) runs each as a node,
 # with the retry as a loop.
 # ---------------------------------------------------------
 
@@ -767,7 +767,7 @@ def main():
 
     if args.save and not args.force:
         from ingestion.lineage import get_engine
-        from services.agents.store.results_store import open_event_for
+        from services.store.results_store import open_event_for
 
         existing = open_event_for(get_engine(), str(email_path))
         if existing:
@@ -776,7 +776,7 @@ def main():
 
     data = None
     if args.db:
-        from services.agents.data.db_data import PostgresData
+        from services.data.db_data import PostgresData
 
         data = PostgresData.from_env(as_of=args.as_of)
 
@@ -784,7 +784,7 @@ def main():
 
     if args.save:
         from ingestion.lineage import get_engine
-        from services.agents.store.results_store import save_pipeline_result
+        from services.store.results_store import save_pipeline_result
 
         result["saved"] = save_pipeline_result(
             get_engine(), result, source_ref=str(email_path)

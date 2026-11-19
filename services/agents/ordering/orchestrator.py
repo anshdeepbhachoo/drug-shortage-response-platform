@@ -36,7 +36,7 @@ What code keeps fixed:
 4. Every attempt is kept (order_submission, with the exact payload) and audited (actor
    "order-orchestrator").
 
-  python -m services.agents.agents.ordering.orchestrator --now 2026-11-15T12:00
+  python -m services.agents.ordering.orchestrator --now 2026-11-15T12:00
 """
 
 from __future__ import annotations
@@ -55,15 +55,15 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from services.agents.agents.model_io import LLM, extract_json, serialize
-from services.agents.agents.ordering.channels import CHANNELS, OrderContext
-from services.agents.agents.ordering.subagents import ChannelAgent
-from services.agents.agents.tools import AgentTool, ToolRegistry
+from services.agents.model_io import LLM, extract_json, serialize
+from services.agents.ordering.channels import CHANNELS, OrderContext
+from services.agents.ordering.subagents import ChannelAgent
+from services.agents.tools import AgentTool, ToolRegistry
 
 logger = logging.getLogger(__name__)
 
 ACTOR = "order-orchestrator"
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[3]
 ROUTING_PATH = ROOT / "data" / "synthetic" / "mock" / "orders" / "supplier_channels.json"
 AUTO_SUBMIT_MAX_UNITS = int(os.environ.get("AUTO_SUBMIT_MAX_UNITS", "500"))
 RELEASE_ROLES = {"procurement", "supply_manager"}
@@ -352,7 +352,7 @@ def submit_order(engine: Engine, data, order, now: datetime, request: dict | Non
                  released_by: str | None = None, llm: LLM | None = None, snapshot: datetime | None = None) -> list[dict]:
     """Place one approved order. Returns this run's attempts (empty: nothing to do)."""
 
-    from services.agents.agents.order_agent import _snapshot, order_facts
+    from services.agents.order_agent import _snapshot, order_facts
 
     run_mode = mode()
     if run_mode == "off" or order.status != "approved":
@@ -388,7 +388,7 @@ def submit_orders(engine: Engine, data, now: datetime, plan_id: str | None = Non
     """Place every approved order not yet submitted (or only plan_id's). {order_id: attempts} for those it acted on.
     llm: the model the agents use (None: rules only)."""
 
-    from services.agents.agents.order_agent import _naive_utc, _snapshot, approved_orders, history
+    from services.agents.order_agent import _naive_utc, _snapshot, approved_orders, history
 
     if mode() == "off":
         return {}
@@ -410,7 +410,7 @@ def release_order(engine: Engine, data, order_id: str, by: str, role: str, now: 
                   llm: LLM | None = None) -> list[dict]:
     """Procurement releases an order a guardrail held. It is then submitted like any other."""
 
-    from services.agents.agents.order_agent import _naive_utc, approved_orders, history
+    from services.agents.order_agent import _naive_utc, approved_orders, history
 
     if not by.strip():
         raise ReleaseError("Releasing an order needs the person's name.")
@@ -435,8 +435,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     from ingestion.lineage import get_engine
-    from services.agents.data.db_data import PostgresData
-    from services.agents.agents.order_agent import resolve_model
+    from services.data.db_data import PostgresData
+    from services.agents.order_agent import resolve_model
 
     for order_id, attempts in submit_orders(get_engine(), PostgresData.from_env(), args.now or datetime.now(timezone.utc),
                                             llm=resolve_model(None, args.rules)).items():

@@ -22,9 +22,9 @@ from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.exc import DBAPIError  # noqa: E402
 
 from ingestion.synthetic_loader import load_folder  # noqa: E402
-from services.agents.agents.signal_agents import process_email  # noqa: E402
-from services.agents.data.data import CsvData  # noqa: E402
-from services.agents.store.results_store import save_pipeline_result  # noqa: E402
+from services.agents.signal_agents import process_email  # noqa: E402
+from services.data.data import CsvData  # noqa: E402
+from services.store.results_store import save_pipeline_result  # noqa: E402
 from tests.test_agent import FakeModel, assessment, transfer  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]

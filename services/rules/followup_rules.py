@@ -11,9 +11,9 @@ this module allows and drafts the wording of messages.
 import math
 from datetime import datetime
 
-from services.agents.rules.checks import filter_options
-from services.agents.agents.followup_schemas import ReplyReading, TransferRequest
-from services.agents.agents.schemas import Move, PlanOption
+from services.rules.checks import filter_options
+from services.agents.followup_schemas import ReplyReading, TransferRequest
+from services.agents.schemas import Move, PlanOption
 
 # ---------------------------------------------------------
 # Thresholds (demo defaults; agree real values with pharmacy)

@@ -29,7 +29,7 @@ import math
 import os
 from datetime import date, timedelta
 
-from services.agents.agents.schemas import Move, OrderLine, PlanOption, PlanSet
+from services.agents.schemas import Move, OrderLine, PlanOption, PlanSet
 
 ORDER_LEAD_DAYS = int(os.environ.get("ORDER_LEAD_DAYS", "5"))
 # An order may not leave a hospital with more than this many days of supply (no stockpiling).
@@ -133,7 +133,7 @@ def combined_option(*, stock_rows: list[dict], shortfall: dict, suppliers: list[
     needs a bridge (the order alone is enough), the bridge would move as much as transferring the whole
     shortfall (then the transfer alone is better), or the other hospitals cannot spare the bridge."""
 
-    from services.agents.rules.rules_planner import APPROVAL_SLACK_DAYS, MIN_RESERVE_DAYS
+    from services.rules.rules_planner import APPROVAL_SLACK_DAYS, MIN_RESERVE_DAYS
 
     if not shortfall or not suppliers:
         return None
@@ -188,7 +188,7 @@ def check_combined(option: PlanOption, stock: dict, shortfall: dict, suppliers: 
     """Empty only when both halves pass: the transfer (donor floors, each hospital bridged until its order
     arrives plus the margin) and the order (checked on the stock after the transfer)."""
 
-    from services.agents.rules.checks import check_transfer
+    from services.rules.checks import check_transfer
 
     if option.type != "transfer_order":
         return ["Only transfer and order options can be verified by this function."]

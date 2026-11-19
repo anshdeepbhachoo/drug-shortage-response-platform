@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from services.agents.store.escalations import EscalationError, target_for
+from services.store.escalations import EscalationError, target_for
 
 
 def test_an_order_goes_to_procurement_and_procurement_goes_back_to_the_planner():
@@ -20,7 +20,7 @@ def test_an_order_goes_to_procurement_and_procurement_goes_back_to_the_planner()
 
 
 def test_the_order_agent_escalates_to_whoever_can_act():
-    from services.agents.agents.order_agent import escalation_role
+    from services.agents.order_agent import escalation_role
 
     base = {"margin_days": 3.0, "cancelled": False, "supplier_reply": None}
     assert escalation_role(base | {"supplier_reply": "question"}) == "procurement"        # answer the supplier

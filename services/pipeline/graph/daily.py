@@ -16,7 +16,7 @@ Routing is decided in code (conditional edges), never by a model. The agentic wo
 plan_alerts, reports and followup is done by the agentic pipeline (pipeline.py): each signal is
 handed to its drug's alert graph, and each evening's follow-up resumes the alerts paused there.
 
-  python -m services.agents.pipeline.graph.daily --mermaid      # print the graph as a Mermaid diagram
+  python -m services.pipeline.graph.daily --mermaid      # print the graph as a Mermaid diagram
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from typing import TypedDict
 from langchain_core.runnables.graph import NodeStyles
 from langgraph.graph import END, START, StateGraph
 
-from services.agents.pipeline.daily_run import (
+from services.pipeline.daily_run import (
     DayContext,
     step_detect,
     step_followup,

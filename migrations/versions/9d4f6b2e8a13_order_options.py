@@ -4,7 +4,7 @@ Revision ID: 9d4f6b2e8a13
 Revises: 7c2e91d4b5a0
 Create Date: 2026-11-18 10:00:00.000000
 
-What order options in plans need (services/agents/agents/orders.py):
+What order options in plans need (services/agents/orders.py):
 
 - plan_action.supplier_id and plan_action.expected_date: an order line is one
   site's order (to_site, units) from one supplier, expected on a date worked

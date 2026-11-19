@@ -24,8 +24,8 @@ from typing import Callable
 
 from pydantic import ValidationError
 
-from services.agents.data.data import CsvData
-from services.agents.rules.followup_rules import (
+from services.data.data import CsvData
+from services.rules.followup_rules import (
     allowed_decisions,
     check_reading,
     compute_facts,
@@ -38,16 +38,16 @@ from services.agents.rules.followup_rules import (
     replan_inputs,
     template_message,
 )
-from services.agents.agents.followup_schemas import (
+from services.agents.followup_schemas import (
     FollowUpAction,
     FollowUpDecision,
     ReplyReading,
     SiteReply,
     TransferRequest,
 )
-from services.agents.agents.model_io import LLM, extract_json, serialize
-from services.agents.rules.security import inspect_supplier_email
-from services.agents.agents.tools import AgentTool, ToolRegistry
+from services.agents.model_io import LLM, extract_json, serialize
+from services.rules.security import inspect_supplier_email
+from services.agents.tools import AgentTool, ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -506,10 +506,10 @@ Allowed decisions: {serialize(sorted(allowed))}
 def bedrock_planner(agent: FollowUpAgent, request: TransferRequest, now: datetime):
     """Ask the existing planning agent for a new donor, then verify in code."""
 
-    from services.agents.agents import signal_agents as core
-    from services.agents.rules.checks import filter_options
-    from services.agents.agents.schemas import SupplyEvent
-    from services.agents.agents.tools import build_tool_registries
+    from services.agents import signal_agents as core
+    from services.rules.checks import filter_options
+    from services.agents.schemas import SupplyEvent
+    from services.agents.tools import build_tool_registries
 
     stock, shortfall = replan_inputs(
         request, agent.data.stock(request.din), agent.snapshot, now

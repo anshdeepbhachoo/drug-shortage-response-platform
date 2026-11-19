@@ -1,5 +1,5 @@
 {
-  "_about": "Synthetic supplier replies to approved orders (services/agents/agents/order_replies.py). An order only exists once a person approves it, so each reply is timed from that approval (after_days, arriving at hour) and matched to the approved order for that drug, hospital and supplier. Placeholders are filled from the order: {qty}, {part} (about half), {order_id}, {drug}, {site}, {expected} and {expected+N} (dates: 'Nov 21' in the text, ISO in offline_reading). offline_reading is what the reader agent should extract, used when no model is configured. ORDER_REPLY_STORY picks the story (default: the first); 'none' turns replies off.",
+  "_about": "Synthetic supplier replies to approved orders (services/agents/order_replies.py). An order only exists once a person approves it, so each reply is timed from that approval (after_days, arriving at hour) and matched to the approved order for that drug, hospital and supplier. Placeholders are filled from the order: {qty}, {part} (about half), {order_id}, {drug}, {site}, {expected} and {expected+N} (dates: 'Nov 21' in the text, ISO in offline_reading). offline_reading is what the reader agent should extract, used when no model is configured. ORDER_REPLY_STORY picks the story (default: the first); 'none' turns replies off.",
   "stories": {
     "mixed": [
       {

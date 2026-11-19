@@ -1,7 +1,7 @@
 """Generate a deterministic multi-day synthetic progression from data/synthetic/mock/.
 
 Does NOT overwrite data/synthetic/mock/. Writes snapshots to data/synthetic/progression/days/<date>/
-with the same CSV schemas expected by services.agents.data.data.CsvData.
+with the same CSV schemas expected by services.data.data.CsvData.
 
 Usage:
   python -m scripts.synthetic.generate_progression
@@ -18,8 +18,8 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 
-from services.agents.data.data import CsvData
-from services.agents.rules.risk import calculate_site_risk, cover_days_by_site
+from services.data.data import CsvData
+from services.rules.risk import calculate_site_risk, cover_days_by_site
 
 START = date(2026, 11, 15)
 NUM_DAYS = 10
@@ -562,7 +562,7 @@ def write_report(out: Path, daily_reports: list[dict], ledger: list[dict]) -> No
             "",
             "```powershell",
             "python -m scripts.synthetic.generate_progression",
-            "python -c \"from services.agents.data.data import CsvData; "
+            "python -c \"from services.data.data import CsvData; "
             "print(CsvData('data/synthetic/progression/days/2026-11-19').stock('99000001'))\"",
             "```",
             "",

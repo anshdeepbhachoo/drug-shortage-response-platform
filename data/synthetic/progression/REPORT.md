@@ -78,7 +78,7 @@ Same-day `usage_change` events apply **before** that day's consumption.
 
 ```powershell
 python -m scripts.synthetic.generate_progression
-python -c "from services.agents.data.data import CsvData; print(CsvData('data/synthetic/progression/days/2026-11-19').stock('99000001'))"
+python -c "from services.data.data import CsvData; print(CsvData('data/synthetic/progression/days/2026-11-19').stock('99000001'))"
 ```
 
 Ledger: `ledger.json`. Risk series: `daily_risk.json`.

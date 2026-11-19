@@ -184,8 +184,8 @@ def nightly_tasks(shortage_client=None, dpd_client=None, llm=None, data=None) ->
     def signals(engine: Engine, params: Params) -> dict:
         import os
 
-        from services.agents.data.db_data import PostgresData
-        from services.agents.pipeline.shortage_signals import pending_reports, run_shortage_signals
+        from services.data.db_data import PostgresData
+        from services.pipeline.shortage_signals import pending_reports, run_shortage_signals
 
         if llm is None and not os.getenv("BEDROCK_MODEL_ID"):
             # Planning needs the model; leave reports pending for a run that has one.
@@ -205,16 +205,16 @@ def nightly_tasks(shortage_client=None, dpd_client=None, llm=None, data=None) ->
 
 
 def followup_tasks(data=None, now=None) -> list[Task]:
-    """Check approved transfers (services/agents/store/followup_db.py). Rules only, no model:
-    run `python -m services.agents.store.followup_db --live` to use Bedrock."""
+    """Check approved transfers (services/store/followup_db.py). Rules only, no model:
+    run `python -m services.store.followup_db --live` to use Bedrock."""
 
     def followup(engine: Engine, params: Params) -> dict:
         import os
         from collections import Counter
         from datetime import datetime, timezone
 
-        from services.agents.data.db_data import PostgresData
-        from services.agents.store.followup_db import run_followup
+        from services.data.db_data import PostgresData
+        from services.store.followup_db import run_followup
 
         source = data or (PostgresData.from_env() if os.getenv("DATABASE_URL_READONLY") else PostgresData(engine))
         actions = run_followup(engine, source, now or datetime.now(timezone.utc))
@@ -224,7 +224,7 @@ def followup_tasks(data=None, now=None) -> list[Task]:
 
 
 def day_tasks(day=None, llm=None) -> list[Task]:
-    """The whole platform for one day (services/agents/pipeline/daily_run.py). Default day: today (UTC)."""
+    """The whole platform for one day (services/pipeline/daily_run.py). Default day: today (UTC)."""
 
     def run(engine: Engine, params: Params) -> dict:
         import os
@@ -232,7 +232,7 @@ def day_tasks(day=None, llm=None) -> list[Task]:
 
         from sqlalchemy import create_engine
 
-        from services.agents.pipeline.daily_run import run_day
+        from services.pipeline.daily_run import run_day
 
         read = create_engine(os.environ["DATABASE_URL_READONLY"]) if os.getenv("DATABASE_URL_READONLY") else engine
         when = day or params.get("day") or datetime.now(timezone.utc).date()

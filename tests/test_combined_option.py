@@ -14,11 +14,11 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from services.agents.store.approvals import option_kind
-from services.agents.rules.checks import check_options
-from services.agents.agents.orders import ORDER_LEAD_DAYS, check_combined, combined_option, with_order_option
-from services.agents.store.results_store import _actions
-from services.agents.agents.schemas import Move, OrderLine, PlanOption, PlanSet
+from services.store.approvals import option_kind
+from services.rules.checks import check_options
+from services.agents.orders import ORDER_LEAD_DAYS, check_combined, combined_option, with_order_option
+from services.store.results_store import _actions
+from services.agents.schemas import Move, OrderLine, PlanOption, PlanSet
 
 TODAY = date(2026, 11, 15)
 SUPPLIERS = [{"supplier_id": "apex-sterile", "supplier": "Apex Sterile", "site_id": "A"}]
@@ -146,7 +146,7 @@ def client(engine):
 
 
 def combined_plan(engine):
-    from services.agents.pipeline.daily_run import run_day
+    from services.pipeline.daily_run import run_day
 
     run_day(engine, engine, NOV15, planner="rules", inbox={})
     [(plan_id, index)] = db_rows(engine, """
@@ -178,8 +178,8 @@ def test_the_plan_card_shows_the_combined_option_for_the_supply_manager_only(eng
 
 @db
 def test_approving_it_records_the_orders_and_both_agents_follow_it_up(engine, monkeypatch):
-    from services.agents.store.followup_db import approved_transfers
-    from services.agents.pipeline.graph.pipeline import AgentPipeline
+    from services.store.followup_db import approved_transfers
+    from services.pipeline.graph.pipeline import AgentPipeline
 
     monkeypatch.setenv("ORDER_REPLY_STORY", "none")
     monkeypatch.setenv("ORDER_SUBMISSION", "off")
@@ -199,7 +199,7 @@ def test_approving_it_records_the_orders_and_both_agents_follow_it_up(engine, mo
 
 
 def test_the_order_agent_counts_the_plans_bridge_transfer_as_arriving():
-    from services.agents.agents.order_agent import order_facts
+    from services.agents.order_agent import order_facts
     from tests.test_order_agent import SNAPSHOT, Data, an_order
 
     now = datetime(2026, 11, 16, 18)

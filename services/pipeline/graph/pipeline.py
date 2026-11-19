@@ -30,7 +30,7 @@ follow-up and resume exactly where it stopped. Engines, the model and the planne
 run time (Deps) and never stored. Every node calls the same functions as the classic pipeline, so the
 code checks, read-only tools, typed handoffs and approval rules are unchanged.
 
-  python -m services.agents.pipeline.graph.pipeline --mermaid      # both graphs as Mermaid diagrams
+  python -m services.pipeline.graph.pipeline --mermaid      # both graphs as Mermaid diagrams
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ from langgraph.types import Command, interrupt
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from services.agents.agents.signal_agents import (
+from services.agents.signal_agents import (
     MAX_EMAIL_LENGTH,
     MIN_CONFIDENCE,
     MODEL_ERRORS,
@@ -61,16 +61,16 @@ from services.agents.agents.signal_agents import (
     propose_plan,
     retry_feedback,
 )
-from services.agents.data.db_data import PostgresData
-from services.agents.store.followup_db import run_followup
-from services.agents.rules.followup_rules import exclude_failed_donor
-from services.agents.agents.order_agent import draft_requests, resolve_model, run_order_followup
-from services.agents.agents.ordering.orchestrator import submit_orders
-from services.agents.store.results_store import save_pipeline_result
-from services.agents.rules.rules_planner import rules_planner
-from services.agents.agents.schemas import PlanOption, PlanSet, SupplyEvent
-from services.agents.rules.security import inspect_supplier_email
-from services.agents.agents.tools import build_tool_registries
+from services.data.db_data import PostgresData
+from services.store.followup_db import run_followup
+from services.rules.followup_rules import exclude_failed_donor
+from services.agents.order_agent import draft_requests, resolve_model, run_order_followup
+from services.agents.ordering.orchestrator import submit_orders
+from services.store.results_store import save_pipeline_result
+from services.rules.rules_planner import rules_planner
+from services.agents.schemas import PlanOption, PlanSet, SupplyEvent
+from services.rules.security import inspect_supplier_email
+from services.agents.tools import build_tool_registries
 
 
 @dataclass
@@ -223,7 +223,7 @@ def _check(state: AlertState, runtime: Runtime[Deps]) -> AlertState:
 
 def _save(state: AlertState, runtime: Runtime[Deps]) -> AlertState:
     deps = runtime.context
-    from services.agents.pipeline.daily_run import living_event  # the "one living alert per drug" rule lives there
+    from services.pipeline.daily_run import living_event  # the "one living alert per drug" rule lives there
 
     trigger = state["trigger"]
     existing = living_event(deps.write_engine, state["din"]) if trigger.get("join", True) else None

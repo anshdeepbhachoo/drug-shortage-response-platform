@@ -239,7 +239,7 @@ class EmailChannel(Channel):
                         f"Reference {ctx.order_id}."}
 
     def check(self, payload: dict, ctx: OrderContext) -> list[str]:
-        from services.agents.agents.order_agent import RequestDraft, WatchedOrder, check_request
+        from services.agents.order_agent import RequestDraft, WatchedOrder, check_request
 
         order = WatchedOrder(order_id=ctx.order_id, plan_id=ctx.plan_id, din=ctx.din, site_id=ctx.site_id,
                              supplier_id=ctx.supplier_id, supplier=ctx.supplier, qty=ctx.qty, status="approved",

@@ -21,10 +21,10 @@ from sqlalchemy import create_engine, text  # noqa: E402
 
 from ingestion.synthetic_loader import load_folder  # noqa: E402
 from ingestion.workflow import nightly_tasks, run_workflow  # noqa: E402
-from services.agents.data.data_source import default_data  # noqa: E402
-from services.agents.data.db_data import PostgresData  # noqa: E402
-from services.agents.pipeline.shortage_signals import pending_reports, run_shortage_signals  # noqa: E402
-from services.agents.agents.tools import build_tool_registries  # noqa: E402
+from services.data.data_source import default_data  # noqa: E402
+from services.data.db_data import PostgresData  # noqa: E402
+from services.pipeline.shortage_signals import pending_reports, run_shortage_signals  # noqa: E402
+from services.agents.tools import build_tool_registries  # noqa: E402
 from tests.test_agent import FakeModel, transfer  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]

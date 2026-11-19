@@ -31,7 +31,7 @@ class Move(BaseModel):
 
 
 class OrderLine(BaseModel):
-    """One site's order from one supplier. Worked out in code (services/agents/agents/orders.py), never by a model."""
+    """One site's order from one supplier. Worked out in code (services/agents/orders.py), never by a model."""
 
     site_id: str
     supplier_id: str

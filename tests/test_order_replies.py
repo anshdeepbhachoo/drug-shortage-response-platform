@@ -12,8 +12,8 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from services.agents.agents.order_agent import OrderAgent
-from services.agents.agents.order_replies import (
+from services.agents.order_agent import OrderAgent
+from services.agents.order_replies import (
     READER_SYSTEM_PROMPT,
     OrderReply,
     OrderReplyReading,
@@ -200,12 +200,12 @@ def test_scenario_replies_are_timed_from_the_approval_and_filled_from_the_order(
 
 
 def test_every_reply_kind_is_in_the_synthetic_data():
-    from services.agents.agents.order_replies import load_stories
+    from services.agents.order_replies import load_stories
 
     kinds = {item["offline_reading"]["kind"] for story in load_stories().values() for item in story}
     assert {"confirmed", "partial", "delayed", "backordered", "cancelled", "question"} <= kinds
     texts = [item["text"] for story in load_stories().values() for item in story]
-    from services.agents.rules.security import inspect_supplier_email
+    from services.rules.security import inspect_supplier_email
 
     assert any(inspect_supplier_email(t).suspicious for t in texts)       # one hostile reply
 
@@ -245,7 +245,7 @@ def test_the_suppliers_confirmation_then_delay_are_read_on_the_evenings_they_arr
 
 @db
 def test_a_backordered_reply_replans_without_that_supplier(engine, monkeypatch):
-    from services.agents.pipeline.graph.pipeline import AgentPipeline
+    from services.pipeline.graph.pipeline import AgentPipeline
 
     monkeypatch.setenv("ORDER_REPLY_STORY", "supply_problems")
     plan_id, order_id = approved_order(engine)

@@ -6,7 +6,7 @@ Create Date: 2026-11-17 02:00:00.000000
 
 Tables for the hospital network's own data (synthetic for now, see
 docs/SYNTHETIC_DATA.md), filled by ingestion/synthetic_loader.py and read by
-the agents through services/agents/data/db_data.py:
+the agents through services/data/db_data.py:
 
     site, tracked_drug, supplier, inventory_snapshot, usage_record,
     substitution, purchase_order

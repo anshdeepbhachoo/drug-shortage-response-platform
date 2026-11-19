@@ -25,7 +25,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 REPLIES_PATH: Path | None = ROOT / "data" / "synthetic" / "mock" / "orders" / "order_replies.json"
 
 MIN_READING_CONFIDENCE = 0.7

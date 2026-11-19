@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from services.agents.rules.checks import check_transfer
-from services.agents.data.data import CsvData
-from services.agents.rules.risk import calculate_site_risk, cover_days_by_site
-from services.agents.agents.schemas import Move, PlanOption
-from services.agents.agents.tools import build_tool_registries
+from services.rules.checks import check_transfer
+from services.data.data import CsvData
+from services.rules.risk import calculate_site_risk, cover_days_by_site
+from services.agents.schemas import Move, PlanOption
+from services.agents.tools import build_tool_registries
 
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = ROOT / "data" / "synthetic" / "mock"
@@ -260,7 +260,7 @@ def test_restore_cover_waits_for_the_delivery_but_adds_no_delay():
 
 
 def test_every_option_type_is_checked_and_failures_are_dropped():
-    from services.agents.rules.checks import check_options
+    from services.rules.checks import check_options
 
     stock = {"A": {"on_hand": 20, "daily_use": 10}, "B": {"on_hand": 400, "daily_use": 8}}
     options = [

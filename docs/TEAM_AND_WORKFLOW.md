@@ -42,7 +42,11 @@ Agree these in week 1 and change them only through a pull request that tags ever
 ```
 apps/web                    Frontend (React + Vite)
 apps/api                    FastAPI backend
-services/agents/            agents/, rules/, data/, store/, pipeline/ (see services/agents/README.md)
+services/agents             AI agents: signal, follow-up, order agent, order orchestrator (ordering/)
+services/rules              code checks, risk, rules planner, email security screen
+services/data               CSV and Postgres data sources
+services/store              results, approvals, follow-up state, escalations
+services/pipeline           daily run, shortage signals, LangGraph graphs
 ingestion                   Health Canada and synthetic-data loaders, nightly workflow
 migrations                  Alembic migrations
 data/synthetic              Synthetic hospital data: mock/ (current day) and progression/ (10 days)

@@ -14,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from services.agents.agents.signal_agents import (
+from services.agents.signal_agents import (
     ASSESSMENT_SYSTEM_PROMPT,
     PLANNING_SYSTEM_PROMPT,
     process_email,
 )
-from services.agents.data.data import CsvData
-from services.agents.rules.security import inspect_supplier_email
+from services.data.data import CsvData
+from services.rules.security import inspect_supplier_email
 
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = ROOT / "data" / "synthetic" / "mock"

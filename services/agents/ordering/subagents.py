@@ -31,10 +31,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-from services.agents.agents.model_io import LLM, extract_json, serialize
-from services.agents.agents.ordering.channels import CHANNELS, Channel, LiveConnectorMissing, OrderContext
-from services.agents.rules.security import inspect_supplier_email
-from services.agents.agents.tools import AgentTool, ToolRegistry
+from services.agents.model_io import LLM, extract_json, serialize
+from services.agents.ordering.channels import CHANNELS, Channel, LiveConnectorMissing, OrderContext
+from services.rules.security import inspect_supplier_email
+from services.agents.tools import AgentTool, ToolRegistry
 
 logger = logging.getLogger(__name__)
 

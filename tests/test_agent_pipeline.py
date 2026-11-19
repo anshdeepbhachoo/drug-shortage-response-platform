@@ -16,9 +16,9 @@ pytestmark = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from apps.api.main import create_app  # noqa: E402
-from services.agents.pipeline.daily_run import run_day  # noqa: E402
-from services.agents.agents.followup_schemas import FollowUpAction  # noqa: E402
-from services.agents.pipeline.graph.pipeline import AgentPipeline  # noqa: E402
+from services.pipeline.daily_run import run_day  # noqa: E402
+from services.agents.followup_schemas import FollowUpAction  # noqa: E402
+from services.pipeline.graph.pipeline import AgentPipeline  # noqa: E402
 from tests.test_agent import FakeModel, assessment  # noqa: E402
 
 EPI = "99000011"
@@ -106,7 +106,7 @@ def test_a_follow_up_replan_loops_back_and_never_reuses_the_failed_donor(engine,
     def failed_transfer(*args, **kwargs):  # the follow-up agent decides the biggest transfer is not happening
         return [FollowUpAction(at=datetime(2026, 11, 16, 18), request_id=action_id, decision="replan", decided_by="rule",
                                reason="Donor cannot ship.", facts={}, needs_human=True)]
-    monkeypatch.setattr("services.agents.pipeline.graph.pipeline.run_followup", failed_transfer)
+    monkeypatch.setattr("services.pipeline.graph.pipeline.run_followup", failed_transfer)
 
     AgentPipeline(engine, engine, use_rules=True).tick(EPI, NOV16, datetime(2026, 11, 16, 18))
 

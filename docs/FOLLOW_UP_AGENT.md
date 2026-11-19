@@ -291,6 +291,6 @@ Run: `.venv/bin/python -m pytest tests -q`
 - **Confirmed units count as arrived** immediately; there is no in-transit state.
 - **Open orders are ignored** for the receiver's cover (conservative).
 - **Linear projection** from one snapshot; real usage varies.
-- **State is in memory in the demo.** On the database, `services/agents/store/followup_db.py` rebuilds requests, nudge counts and history from `audit_log` on each run.
+- **State is in memory in the demo.** On the database, `services/store/followup_db.py` rebuilds requests, nudge counts and history from `audit_log` on each run.
 - **Escalated / replanned requests stop being tracked.** A replan's new transfers would need to become new requests.
 - **Thresholds are unvalidated** defaults (section 6).

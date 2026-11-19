@@ -21,9 +21,9 @@ from sqlalchemy import create_engine, text  # noqa: E402
 
 from apps.api.main import create_app  # noqa: E402
 from ingestion.synthetic_loader import load_folder  # noqa: E402
-from services.agents.store.approvals import approve_plan  # noqa: E402
-from services.agents.pipeline.daily_run import run_day  # noqa: E402
-from services.agents.data.db_data import PostgresData  # noqa: E402
+from services.store.approvals import approve_plan  # noqa: E402
+from services.pipeline.daily_run import run_day  # noqa: E402
+from services.data.db_data import PostgresData  # noqa: E402
 from tests.test_agent import FakeModel, assessment, transfer  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,7 +47,7 @@ def engine(monkeypatch):
     command.upgrade(config, "head")
     # After the migration: alembic's env.py reloads .env, which would put the model back.
     monkeypatch.delenv("BEDROCK_MODEL_ID", raising=False)   # never call Bedrock from tests
-    monkeypatch.setattr("services.agents.agents.signal_agents.run_agent", _no_bedrock)
+    monkeypatch.setattr("services.agents.signal_agents.run_agent", _no_bedrock)
     engine = create_engine(URL)
     yield engine
     engine.dispose()
@@ -196,7 +196,7 @@ def test_only_the_supply_manager_can_raise_a_plan(engine):
 def test_a_drug_not_yet_in_danger_can_still_be_planned_ahead(engine):
     load_folder(engine, DAYS / "2026-11-15")
 
-    from services.agents.pipeline.daily_run import plan_for_drug
+    from services.pipeline.daily_run import plan_for_drug
     result = plan_for_drug(engine, engine, "99000019", NOV15, "Dana Okafor", planner="rules")   # saline: plenty
 
     assert result["status"] == "no_shortage_detected"

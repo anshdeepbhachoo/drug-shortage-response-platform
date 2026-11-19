@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from services.agents.agents.signal_agents import process_event
-from services.agents.data.data import CsvData
-from services.agents.data.data_source import default_data
-from services.agents.agents.schemas import SupplyEvent
-from services.agents.pipeline.shortage_signals import DEFAULT_SHORTAGE_DAYS, event_from_report
-from services.agents.agents.tools import build_tool_registries
+from services.agents.signal_agents import process_event
+from services.data.data import CsvData
+from services.data.data_source import default_data
+from services.agents.schemas import SupplyEvent
+from services.pipeline.shortage_signals import DEFAULT_SHORTAGE_DAYS, event_from_report
+from services.agents.tools import build_tool_registries
 from tests.test_agent import FakeModel, transfer
 
 ROOT = Path(__file__).resolve().parents[1]
