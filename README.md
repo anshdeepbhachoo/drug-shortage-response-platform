@@ -4,7 +4,7 @@
 
 Takes a hospital network from a drug shortage signal to an approved, auditable response. It loads hospital stock every day, reads supplier emails and Health Canada shortage reports, works out which drugs will run out where, proposes ways to cover the gap, and routes each plan to the right person to approve. AI agents handle the language-heavy work; code does every calculation and safety check; people make every decision.
 
-> **Development branch:** `dev`. Open pull requests against `dev`, not `main`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+> **Current baseline:** `main` holds the latest integrated MediFlow application. Day-to-day feature work usually branches from and opens pull requests into `dev` when that integration branch is active. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Home:** today's run and a tile for each part of the platform.
 
@@ -32,9 +32,10 @@ Takes a hospital network from a drug shortage signal to an approved, auditable r
 | Rules planner (no AI) | Built; used when no model is configured |
 | Approvals with role rules and stock re-check | Built |
 | Follow-up agent for approved transfers | Built |
+| Orders agent, order replies, and order orchestrator | Built; **simulated** supplier submission by default (`ORDER_SUBMISSION` defaults to `simulate` in code; optional in `.env`) |
+| Escalations and role notifications | Built |
 | API (FastAPI) and web app (React) | Built |
-| Orders agent | In progress |
-| Sending anything (emails, orders, transfers) | Not built on purpose: the platform records decisions, people act |
+| Real outbound email, live ERP/EDI/portal submission, or hospital system integration | Not built on purpose: the platform records decisions and simulates placement; people act |
 
 ## How it fits together
 
@@ -43,13 +44,15 @@ Takes a hospital network from a drug shortage signal to an approved, auditable r
  Synthetic hospital  ├─► ingestion ─► Postgres ─┤
  data and emails ────┘                          └─► daily run ─► stock watch ─► planner ─► code checks
                                                        │            (AI or rules)
-                                                       └─► follow-up on approved transfers
+                                                       ├─► follow-up on approved transfers
+                                                       └─► order agent / orchestrator (simulated channels)
  Web app (apps/web) ◄── API (apps/api) ◄── Postgres
 ```
 
 - **One living alert per drug.** The stock watch raises it; emails and shortage reports add evidence and refresh its plan instead of opening duplicates.
 - **Every plan option is checked in code** before anyone sees it: transfers keep donors above their 14-day floor, substitutes must come from the approved table. Options that fail are never offered.
 - **Approval:** each plan is one decision. Choose one option, or reject the plan with a reason. The supply manager can choose any option except a substitution, which needs a pharmacist.
+- **After approval:** transfers go to follow-up; orders go to the orders agent and (by default) a **simulated** multi-channel orchestrator. Escalations become role notifications on Overview.
 
 ## Orchestration (LangGraph)
 
@@ -108,7 +111,7 @@ graph TD;
 | `save` | Code | Saves the alert and plan; continues only if an option passed |
 | `await_decision` | Human | **The graph pauses.** Approve resumes it; a refused approval or new evidence loops back to `gap` |
 | `act` | Code | Routes the approved option: transfer → follow-up, order → orders agent |
-| `order` | Agent | Orders agent (placeholder: the order is approved but not placed yet) |
+| `order` | Agent | Orders agent drafts/follows the approved order; the orchestrator places it through simulated supplier channels unless held for procurement release |
 | `follow_up` | Agent | **Pauses until each evening**, then checks the transfer; loops until done, or back to `gap` to replan without the hospital that failed |
 
 ### Intake: one graph per supplier notice
@@ -253,16 +256,20 @@ If the page shows a scripted story ("Step 1 of 7"), the API wasn't reachable: ch
 
 Pick who you are with **Viewing as** at the bottom of the sidebar.
 
-| Page | What it shows |
+| Page (sidebar label) | What it shows |
 |---|---|
-| Home | Today's run and its report, plus tiles for hospitals, stock, problems, decisions waiting, follow-up and the inbox |
-| Hospitals | One card per hospital (hover for a summary, click for details) and a drug-by-hospital heatmap |
+| Home / Overview | Today's run and report, tiles for network status, alerts, decisions waiting, follow-up and inbox, plus role notifications |
+| Hospitals / Network Dashboard | One card per hospital (hover for a summary, click for details) and a drug-by-hospital heatmap |
+| Shortage Alerts | Living alerts per drug, evidence, and plan options (can open an option into Approvals) |
 | Stock | Drugs that need attention, one row per drug, and the full heatmap |
-| Problems | Each drug's alert and the evidence behind it (stock watch, emails, reports) |
+| Signal Review (live) / Alerts (demo) | Supplier notices and shortage signals waiting for or already assessed |
 | Plans | Every option the planner proposed, by drug |
 | Approvals | One card per plan: choose an option or reject the plan |
-| History | Every run, AI result, decision and follow-up check |
+| Messages | Draft notices and procurement-facing messages |
+| History | Runs, AI results, decisions, order/follow-up checks and audit trail |
 | Data | Where each number came from: ingestion runs, raw snapshots, quarantined rows |
+
+Use **Viewing as** at the bottom of the sidebar to switch roles (supply manager, pharmacist, procurement, auditor).
 
 ## Running pieces by hand
 
@@ -318,7 +325,7 @@ docker stop dsr-test
 
 ## Working together
 
-- Branch from `dev` (`feat/...`, `fix/...`, `docs/...`, `chore/...`), keep pull requests small, and merge back into `dev`.
+- Prefer small pull requests. Feature work usually branches from `dev` and targets `dev` when that branch is the active integration line; `main` is the merged baseline reviewers should treat as current.
 - Conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`).
 - New logic comes with tests.
 - Secrets stay in `.env`, which is ignored by git.
@@ -328,9 +335,12 @@ docker stop dsr-test
 
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
-- [Project overview](docs/PROJECT_OVERVIEW.md): problem, users, data sources, design
-- [Team and workflow](docs/TEAM_AND_WORKFLOW.md)
-- [Agents](services/agents/README.md): design rules and the signal and follow-up pipelines
+- [API endpoints](docs/API.md)
+- [Project overview](docs/PROJECT_OVERVIEW.md): problem, users, data sources, what is real vs synthetic
+- [Team and workflow](docs/TEAM_AND_WORKFLOW.md) (includes historical planning notes)
+- [Agents](services/agents/README.md): design rules, signal, orders, follow-up
 - [Follow-up agent](docs/FOLLOW_UP_AGENT.md)
-- [Synthetic data](docs/SYNTHETIC_DATA.md) and [mock data](mock/README.md)
-- [Progression scenario](scenarios/progression/README.md)
+- [Synthetic data](docs/SYNTHETIC_DATA.md), [mock data](mock/README.md), [progression scenario](scenarios/progression/README.md)
+- [40-second demo runbook](docs/DEMO.md)
+- [UI guidelines](apps/web/UI_GUIDELINES.md)
+- [Migrations](migrations/README)

@@ -1,17 +1,18 @@
 # Agents (`services/agents`)
 
-The AI layer of the drug shortage response platform. Two pipelines live here:
+The AI layer of the drug shortage response platform. Three related workflows live here:
 
-| Pipeline | Owner | Entry point | What it does |
+| Workflow | Owner | Entry point | What it does |
 |---|---|---|---|
 | **Signal → plan** | Anshdeep | `agent.py` | Reads a supplier email, works out which sites run short, proposes verified transfer plans |
-| **Follow-up** | Aryan | `followup.py`, `followup_demo.py` | Watches approved transfers after approval and decides wait / nudge / replan / escalate / close |
+| **Transfer follow-up** | Aryan | `followup.py`, `followup_demo.py` | Watches approved transfers after approval and decides wait / nudge / replan / escalate / close |
+| **Ordering** | — | `order_agent.py`, `ordering/` | After approval: drafts/follows supplier orders and runs the multi-channel orchestrator (simulated submission by default) |
 
-Both run on **Amazon Bedrock** (Claude Haiku 4.5 through the Converse API) and both follow the same rules, listed below. Detailed design of the follow-up agent: [`docs/FOLLOW_UP_AGENT.md`](../../docs/FOLLOW_UP_AGENT.md).
+Signal assessment and transfer follow-up can use **Amazon Bedrock** (Claude Haiku 4.5 through the Converse API) and follow the shared design rules below. Ordering uses the same validation and safety pattern; channel submission defaults to simulation. Detailed design of the follow-up agent: [`docs/FOLLOW_UP_AGENT.md`](../../docs/FOLLOW_UP_AGENT.md).
 
 ---
 
-## Design rules (both pipelines)
+## Design rules (shared across agent workflows)
 
 1. **Python does the numbers.** Days of cover, shortfalls, lateness and safety floors are computed in code and handed to the model. The model never does arithmetic that matters.
 2. **The model only does language and judgement.** Reading free text, choosing between options Python allows, explaining, drafting messages.
@@ -28,7 +29,7 @@ Both run on **Amazon Bedrock** (Claude Haiku 4.5 through the Converse API) and b
 
 | File | Purpose |
 |---|---|
-| `data.py` | `CsvData`: loads the mock CSVs in `mock/` (drugs, sites, usage, inventory, open orders, substitutions). `stock(din)` returns on-hand, daily use and days of supply per site. Will be swapped for the database later. Synthetic-data handoff: [`docs/SYNTHETIC_DATA.md`](../../docs/SYNTHETIC_DATA.md). Inspect helper: `python inspect_synthetic.py summary`. |
+| `data.py` | `CsvData`: loads the mock CSVs in `mock/` (drugs, sites, usage, inventory, open orders, substitutions). `stock(din)` returns on-hand, daily use and days of supply per site. Prefer `PostgresData` / `AGENT_DATA_SOURCE=postgres` when running against the database. Synthetic-data handoff: [`docs/SYNTHETIC_DATA.md`](../../docs/SYNTHETIC_DATA.md). Inspect helper: `python inspect_synthetic.py summary`. |
 | `tools.py` | `AgentTool` (one tool: name, description, JSON schema, Python function) and `ToolRegistry` (the allow-list an agent may call; rejects unknown tools and bad arguments). `build_tool_registries()` makes the assessment and planning tool sets. |
 | `schemas.py` | Pydantic models: `SupplyEvent`, `Move`, `PlanOption`, `PlanSet`. |
 | `security.py` | `inspect_supplier_email()`: regex screen for instruction override, role impersonation and unauthorised-action wording. |
@@ -136,11 +137,13 @@ approval (a person) -> order agent drafts the request -> ORDER ORCHESTRATOR AGEN
 - **Reports are checked against what happened.** A sub-agent can't report "accepted" for a refusal, and the orchestrator's summary must match the order's real state. One retry with the problem, then rules finish from where the agent stopped. Every step records who took it (`chosen_by`, `read_by`: agent or rule).
 - **Everything is stored and audited.** Each step goes into `order_submission` with the payload, the brief and the sub-agent's report, and the run's summary is in the audit log as "Order orchestration" (actor `order-orchestrator`).
 
-`ORDER_SUBMISSION` sets the mode:
+`ORDER_SUBMISSION` sets the mode (read by `ordering/orchestrator.py` via `os.getenv("ORDER_SUBMISSION", "simulate")`):
 
-- `simulate` (default): real payloads, simulated answers, nothing leaves the machine
+- `simulate` (**code default** when the variable is omitted): build and audit real payloads; answers are simulated; **no live supplier order is submitted**. Unrelated outbound calls (for example Health Canada ingestion or optional Bedrock) are not controlled by this setting.
 - `live`: needs a real connector per system; none are configured, so the sub-agents report "not submitted" and it goes to email
 - `off`: people place every order
+
+The variable is optional and may be left out of `.env` / `.env.example`.
 
 Without Bedrock, the rules take every step in the same order, and the UI shows **Rules** instead of **Agent**.
 
@@ -161,9 +164,10 @@ Tests: `tests/test_order_orchestrator.py`. They use a fake model that calls the 
 ## Setup
 
 ```bash
-python3.11 -m venv .venv
+# Prefer the Python version the team documents in the root README (currently 3.14)
+python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp .env.example .env    # then fill in the Bedrock values below
+cp .env.example .env    # then fill in the Bedrock values below if using AI
 ```
 
 `.env` (gitignored, never commit it):
@@ -210,7 +214,9 @@ Tests: `tests/test_agent.py` (signal → plan, fake model) and `tests/test_follo
 - Approvals: `python -m services.agents.approvals list | approve | reject` (`approvals.py`). Role rules and a re-check against current stock are enforced in code; one decision per plan.
 - Follow-up on the database: `python -m services.agents.followup_db --now 2026-11-16T18:00 --as-of 2026-11-15` (`followup_db.py`). Watches the transfers of approved options, runs `FollowUpAgent` unchanged, writes each check to `audit_log` and rebuilds its state from there on the next run. Scheduled form: `python -m ingestion.workflow followup`.
 
-## Known issues
+## Integration status
 
-- Nothing here is connected to the UI yet; there is no API layer.
-- Data comes from CSVs in `mock/`; the database is not wired in.
+- Connected to the FastAPI layer (`apps/api`) and the React console (`apps/web`): day runs, approvals, orders, escalations, and follow-up.
+- Default offline data source remains `mock/` CSVs; set `AGENT_DATA_SOURCE=postgres` to read operational tables through the read-only role.
+- Order channel submission defaults to **simulate** when `ORDER_SUBMISSION` is unset. That mode does not submit live supplier orders; it does not disable Health Canada or Bedrock integrations.
+- Package layout on current `main` is the flat `services/agents/` tree documented above.

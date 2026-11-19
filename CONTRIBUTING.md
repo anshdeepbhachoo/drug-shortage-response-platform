@@ -6,20 +6,20 @@ Thank you for helping improve MediFlow. Keep changes small, reviewable, and resp
 
 | Branch | Role |
 |---|---|
-| `main` | Stable baseline. Do not open pull requests against it unless the team explicitly agrees. |
-| `dev` | Active integration branch. Branch from here and open pull requests into it. |
+| `main` | Latest merged application baseline. Do not push directly. |
+| `dev` | Active integration branch when the team is using one. Branch from here and open pull requests into it for feature work. |
 | `feat/*` | New features |
 | `fix/*` | Bug fixes |
 | `docs/*` | Documentation only |
 | `chore/*` | Repository maintenance and CI |
 
-Do not delete, rename, or force-push shared branches. Leave unfinished teammate branches alone.
+Do not delete, rename, or force-push shared branches. Leave unfinished teammate branches alone unless you are coordinating that work with the branch owner.
 
 ## Pull requests
 
-1. Create your branch from the latest `dev`.
+1. Create your branch from the latest agreed integration tip (usually `dev`; use `main` only when the team says so).
 2. Keep the pull request focused on one concern.
-3. Open the pull request against `dev`, not `main`.
+3. Open the pull request against `dev` for normal feature integration, or against `main` when the team is merging a finished integration or docs baseline.
 4. Fill in the pull request template.
 5. Do not change unrelated application areas.
 

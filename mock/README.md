@@ -20,7 +20,7 @@ python make_mock_data.py
 
 Do **not** put permanent manual edits in the generated CSVs or generated emails. Change `make_mock_data.py` and regenerate instead.
 
-Phase 1 current-day data is the reproducible starting point for demos and for Phase 2 progression (`scenarios/progression/`).
+Current-day data here is the reproducible starting point for demos and for the 10-day progression under `scenarios/progression/` on current `main`.
 
 ## Reported vs applied supplier events
 
