@@ -1,14 +1,14 @@
 import { useState } from "react";
-import { PlanCard } from "../components/PlanCard";
+import { planStatus, usePlanSummary } from "../components/PlanCard";
 import { Empty, Origin, PageHead, Status, formatDays, type OriginKind, type Tone } from "../components/ui";
 import { SITES, dayLabel, drugById, siteName } from "../data/mock";
 import { lineCoverage, tierFor } from "../lib/risk";
 import { currentOptions, stageOf, type Stage } from "../lib/response";
 import { useStore } from "../lib/store";
 import type { FollowUp } from "../lib/api";
-import type { Tier } from "../lib/types";
+import type { Plan, Tier } from "../lib/types";
 
-type Go = (view: "approvals" | "events", eventId?: string) => void;
+type Go = (view: "approvals" | "events", eventId?: string, optionId?: string) => void;
 
 const STAGES: { id: Stage; title: string; note: string }[] = [
   { id: "decide", title: "Needs decision", note: "a checked plan is waiting for approval" },
@@ -226,7 +226,7 @@ function AlertDetail({ a, go }: { a: ReturnType<typeof useAlerts>[number]; go: G
               </button>
             </div>
           ) : (
-            a.options.map((p) => <PlanCard key={p.id} plan={p} compact recommended={p.rank === 1 && p.status !== "approved"} />)
+            <OptionsTable options={a.options} open={(optionId) => go("approvals", a.event.id, optionId)} />
           )}
           {a.stage === "tracking" && (() => {
             const approved = a.options.find((p) => p.status === "approved");
@@ -252,6 +252,57 @@ function AlertDetail({ a, go }: { a: ReturnType<typeof useAlerts>[number]; go: G
   );
 }
 
+
+const TYPE_WORD: Record<string, string> = {
+  transfer: "Transfer", order: "Order", transfer_order: "Transfer + order", substitute: "Substitute",
+  conserve: "Conserve", escalate: "Escalate",
+};
+
+/** The response plan's options, read-only: the decision is made in the Approval Queue (clicking a row opens it). */
+function OptionsTable({ options, open }: { options: Plan[]; open: (optionId?: string) => void }) {
+  return (
+    <div className="tablewrap">
+      <table className="table detail-table options-table">
+        <thead>
+          <tr>
+            <th className="num">#</th>
+            <th>Type</th>
+            <th>Option</th>
+            <th>Safety checks</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {options.map((p) => <OptionRow key={p.id} plan={p} open={open} />)}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function OptionRow({ plan, open }: { plan: Plan; open: (optionId?: string) => void }) {
+  const { state } = useStore();
+  const { title, feasible, by, kind } = usePlanSummary(plan);
+  const status = planStatus(plan.status, state.live !== null);
+  const top = plan.rank === 1 && plan.status !== "approved" && feasible;
+  return (
+    <tr className={plan.status === "approved" ? "approved" : ""} onClick={() => open(plan.status === "pending-approval" ? plan.id : undefined)} title="Open this option in the Approval Queue">
+      <td className="num">{plan.rank}</td>
+      <td className="nowrap">
+        <span className="stage-cell">
+          <Origin by={by.by} label={by.label} compact />
+          {TYPE_WORD[kind ?? plan.optionType ?? ""] ?? "Option"}
+        </span>
+      </td>
+      <td>
+        {title}
+        {top && <span className="badge-accent" style={{ marginLeft: 8 }}>Recommended</span>}
+      </td>
+      <td className="nowrap">{feasible ? <Status tone="good">Pass</Status> : <Status tone="crit">Breaks a rule</Status>}</td>
+      <td className="nowrap"><Status tone={status.tone}>{status.text}</Status></td>
+    </tr>
+  );
+}
 
 const ORDER_TONE: Record<string, Tone> = { approved: "warn", placed: "good", in_transit: "good", delayed: "warn", delivered: "good", cancelled: "crit" };
 const CHECK_TONE: Record<string, Tone> = { wait: "good", close: "good", nudge: "warn", escalate: "crit", replan: "crit" };
@@ -471,7 +522,8 @@ function OrderTracking({ order: o }: { order: FollowUp }) {
           </p>
         </details>
       ))}
-      {o.request && (
+      {/* The draft is the email channel's starting point; once SAP, EDI or a portal took the order it is not needed. */}
+      {o.request && !(o.submissions ?? []).some((x) => x.status === "accepted") && (
         <details>
           <summary className="small">
             <Origin by={o.request.decidedBy === "agent" ? "agent" : "rules"} label={o.request.decidedBy === "agent" ? "Order agent" : "Order rules"} compact />{" "}

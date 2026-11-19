@@ -263,6 +263,7 @@ def plan_cards(plans: list[dict], as_of: date | None = None, platform: dict[str,
     cards = []
     for plan in plans:
         passed = {i for i, acts in plan["options"].items() if all(a["verified"] for a in acts)}
+        shown = 0   # options are numbered 1, 2, 3 as shown; the card id keeps the stored index for approval
         for index, actions in sorted(plan["options"].items()):
             first = actions[0]
             kind = option_kind(actions)
@@ -295,9 +296,10 @@ def plan_cards(plans: list[dict], as_of: date | None = None, platform: dict[str,
                 cost, lead = "Supplier price (not yet quoted)", f"Expected {_when(latest)} (standard lead time, unconfirmed)"
             else:
                 cost, lead = "No cost estimate", LEAD_TIME.get(first["type"], "Needs a person")
+            shown += 1
             cards.append({
                 "id": f"{plan['plan_id']}-O{index}", "eventId": plan["event_id"], "drugId": plan["din"],
-                "solverRun": plan["plan_id"], "rank": index,
+                "solverRun": plan["plan_id"], "rank": shown,
                 "title": first["description"], "transfers": transfers, "orders": orders,
                 "score": round(max(0.1, (0.95 if verified else 0.4) - 0.05 * (index - 1)), 2),
                 "cost": cost,
@@ -391,7 +393,8 @@ def _detail_text(row: dict, site_names: dict[str, str]) -> str:
     detail = row["detail"] or {}
     action = row["action"]
     if action in ("Approved", "Rejected"):
-        what = f"Option {detail['option']} ({detail.get('type', 'plan').replace('_', ' + ')})" if detail.get("option") else "Plan"
+        # Described, not numbered: the number people see counts only the options that passed their checks.
+        what = detail.get("type", "plan").replace("_", " + ").capitalize()
         moves = [a for a in detail.get("actions", []) if a.get("units")]
         if moves:
             name = lambda site: site_names.get(site, site)
@@ -411,7 +414,8 @@ def _detail_text(row: dict, site_names: dict[str, str]) -> str:
     if action == "Order escalated to procurement" or action.startswith("Escalated to"):
         return detail.get("message", "")
     if action == "Order request drafted":
-        return f"Message to {detail.get('message_to', 'the supplier')}: \"{detail.get('subject', '')}\". Waiting for a person to send it."
+        return (f"Email to {detail.get('message_to', 'the supplier')} drafted: \"{detail.get('subject', '')}\". "
+                "Used only if the order has to go by email; nothing is sent from here.")
     if action == "Order held for release":
         return detail.get("note") or f"{detail.get('qty')} units is over the auto-submit limit; a person must release it."
     if action == "Notification read":
