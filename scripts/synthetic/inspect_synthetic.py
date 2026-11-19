@@ -1,4 +1,4 @@
-"""Inspect MediFlow synthetic data through existing agent loaders/tools.
+"""Inspect the platform's synthetic data through existing agent loaders/tools.
 
 Examples (PowerShell, from repo root):
 

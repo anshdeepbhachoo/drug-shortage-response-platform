@@ -1,1 +1,7 @@
-Generic single-database configuration.
+Alembic migrations for the platform database (raw SQL in each revision).
+
+Run from the repo root with DATABASE_URL_OWNER set in .env:
+
+    .venv/bin/alembic upgrade head      # create or update the tables
+    .venv/bin/alembic downgrade base    # drop everything (start over)
+    .venv/bin/alembic heads             # current head revision

@@ -17,6 +17,10 @@ htmlcov/
 coverage/
 evaluation/
 node_modules/
+*.tsbuildinfo
+*.log
+# local Claude Code settings and worktrees
+.claude/
 dist/
 .idea/
 .vscode/

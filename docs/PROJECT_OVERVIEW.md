@@ -1,4 +1,4 @@
-# [Platform name]: drug shortage response platform
+# Drug shortage response platform: project overview
 
 Items in [brackets] are placeholders. Items marked TBC need confirming before anyone relies on them.
 

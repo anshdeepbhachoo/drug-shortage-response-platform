@@ -1,6 +1,6 @@
 # Synthetic hospital supply-chain data (handoff)
 
-This document is for MediFlow teammates using the synthetic dataset that supports the Signal, Planner, and Follow-up agents.
+This document is for teammates using the synthetic dataset that supports the Signal, Planner, and Follow-up agents.
 
 All DINs `9900xxxx` are **synthetic**. They are not Health Canada registrations. No patient data is included. Substitution rows are review-required demo records, not clinical approvals.
 

@@ -1,4 +1,4 @@
-"""Generate MediFlow synthetic hospital supply-chain CSVs.
+"""Generate the platform's synthetic hospital supply-chain CSVs.
 
 Writes the ACTIVE expanded dataset into data/synthetic/mock/ (default).
 

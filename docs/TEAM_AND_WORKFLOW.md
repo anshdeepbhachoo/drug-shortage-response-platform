@@ -40,15 +40,19 @@ Agree these in week 1 and change them only through a pull request that tags ever
 ## 3. Repository layout
 
 ```
-/apps/web          Frontend
-/apps/api          FastAPI backend
-/services/agents   Agents and tool definitions
-/services/planner  Risk calculation and solver
-/packages/schemas  Shared models and OpenAPI spec
-/data              Synthetic data generator and fixtures
-/infra             Docker Compose, infrastructure as code
-/docs              Overview, architecture, ADRs, demo script
+apps/web                    Frontend (React + Vite)
+apps/api                    FastAPI backend
+services/agents/            agents/, rules/, data/, store/, pipeline/ (see services/agents/README.md)
+ingestion                   Health Canada and synthetic-data loaders, nightly workflow
+migrations                  Alembic migrations
+data/synthetic              Synthetic hospital data: mock/ (current day) and progression/ (10 days)
+scripts/synthetic           Synthetic-data generators and inspection CLI
+docker, docker-compose.yml  Postgres and its database roles
+docs                        Overview, demo script, team workflow, data notes
+tests                       Python tests
 ```
+
+The README's "Repository layout" section is the maintained version.
 
 ## 4. Working agreements
 

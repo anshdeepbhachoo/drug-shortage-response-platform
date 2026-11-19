@@ -177,13 +177,7 @@ Tests: `tests/test_order_orchestrator.py`. They use a fake model that calls the 
 
 ## Setup
 
-```bash
-python3.14 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-cp .env.example .env    # then fill in the Bedrock values below
-```
-
-`.env` (gitignored, never commit it):
+Install, database and web app: see the [root README](../../README.md#getting-started). For the agents, `.env` (gitignored, never commit it) needs:
 
 ```
 AWS_REGION=us-east-2
