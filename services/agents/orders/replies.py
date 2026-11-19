@@ -1,7 +1,7 @@
 """Supplier replies to approved orders: what they are, and how a reading of one is checked.
 
-The order agent (order_agent.py) reads each reply in three steps, as the transfer
-follow-up does (followup.py):
+The order agent (orders/agent.py) reads each reply in three steps, as the transfer
+follow-up does (followup/agent.py):
 
 1. Security screen (security.inspect_supplier_email). A flagged reply never reaches
    the model; the order is escalated for a person.
@@ -25,7 +25,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 REPLIES_PATH: Path | None = ROOT / "data" / "synthetic" / "mock" / "orders" / "order_replies.json"
 
 MIN_READING_CONFIDENCE = 0.7

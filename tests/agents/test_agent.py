@@ -14,11 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from services.agents.signal_agents import (
-    ASSESSMENT_SYSTEM_PROMPT,
-    PLANNING_SYSTEM_PROMPT,
-    process_email,
-)
+from services.agents.signals.assessment import ASSESSMENT_SYSTEM_PROMPT
+from services.agents.signals.planning import PLANNING_SYSTEM_PROMPT
+from services.agents.signals.process import process_email
 from services.data.data import CsvData
 from services.rules.security import inspect_supplier_email
 

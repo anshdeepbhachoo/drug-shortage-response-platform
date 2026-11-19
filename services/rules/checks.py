@@ -1,6 +1,6 @@
 import re
 
-from services.agents.orders import check_combined, check_order
+from services.agents.orders.options import check_combined, check_order
 from services.agents.schemas import PlanOption
 
 

@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from apps.api.main import create_app  # noqa: E402
 from services.pipeline.daily_run import run_day  # noqa: E402
-from services.agents.followup_schemas import FollowUpAction  # noqa: E402
+from services.agents.followup.schemas import FollowUpAction  # noqa: E402
 from services.pipeline.graph.pipeline import AgentPipeline  # noqa: E402
 from tests.agents.test_agent import FakeModel, assessment  # noqa: E402
 

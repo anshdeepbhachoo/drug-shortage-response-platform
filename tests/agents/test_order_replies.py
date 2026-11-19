@@ -12,8 +12,8 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from services.agents.order_agent import OrderAgent
-from services.agents.order_replies import (
+from services.agents.orders.agent import OrderAgent
+from services.agents.orders.replies import (
     READER_SYSTEM_PROMPT,
     OrderReply,
     OrderReplyReading,
@@ -200,7 +200,7 @@ def test_scenario_replies_are_timed_from_the_approval_and_filled_from_the_order(
 
 
 def test_every_reply_kind_is_in_the_synthetic_data():
-    from services.agents.order_replies import load_stories
+    from services.agents.orders.replies import load_stories
 
     kinds = {item["offline_reading"]["kind"] for story in load_stories().values() for item in story}
     assert {"confirmed", "partial", "delayed", "backordered", "cancelled", "question"} <= kinds

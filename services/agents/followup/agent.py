@@ -38,7 +38,7 @@ from services.rules.followup_rules import (
     replan_inputs,
     template_message,
 )
-from services.agents.followup_schemas import (
+from services.agents.followup.schemas import (
     FollowUpAction,
     FollowUpDecision,
     ReplyReading,
@@ -506,7 +506,7 @@ Allowed decisions: {serialize(sorted(allowed))}
 def bedrock_planner(agent: FollowUpAgent, request: TransferRequest, now: datetime):
     """Ask the existing planning agent for a new donor, then verify in code."""
 
-    from services.agents import signal_agents as core
+    from services.agents.signals import planning as core
     from services.rules.checks import filter_options
     from services.agents.schemas import SupplyEvent
     from services.agents.tools import build_tool_registries

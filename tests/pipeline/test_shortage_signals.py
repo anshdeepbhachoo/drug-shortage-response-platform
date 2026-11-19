@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from services.agents.signal_agents import process_event
+from services.agents.signals.process import process_event
 from services.data.data import CsvData
 from services.data.data_source import default_data
 from services.agents.schemas import SupplyEvent

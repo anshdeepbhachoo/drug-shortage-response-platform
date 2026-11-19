@@ -42,7 +42,7 @@ Agree these in week 1 and change them only through a pull request that tags ever
 ```
 apps/web                    Frontend (React + Vite)
 apps/api                    FastAPI backend
-services/agents             AI agents: signal, follow-up, order agent, order orchestrator (ordering/)
+services/agents             AI agents: signal, follow-up, order agent, order orchestrator (orders/placement/)
 services/rules              code checks, risk, rules planner, email security screen
 services/data               CSV and Postgres data sources
 services/store              results, approvals, follow-up state, escalations

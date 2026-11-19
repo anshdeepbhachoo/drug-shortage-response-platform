@@ -78,7 +78,7 @@ Quantities below come from the generated progression (`daily_risk.json` / `REPOR
 | Deterministic calculations | days of supply, shortfall, spare units, transfer feasibility checks | Existing `CsvData`, `risk.py`, `tools.get_spare_units`, `checks.py` |
 | Scripted ledger events | `transfer_proposed`, `transfer_rejected`, `followup_check` | `scripts/synthetic/generate_progression.py` demo story — **not** Bedrock agent outputs |
 | Applied stock events | consumption, `transfer_received`, `delivery_received`, usage changes | Progression engine (mathematically accounted) |
-| Live agent demos | `python -m services.agents.signal_agents data/synthetic/mock/emails/clear.txt` | Signal/Planner with Bedrock (optional; needs AWS). Use any day’s folder via `CsvData(path)` if wiring a custom call. |
+| Live agent demos | `python -m services.agents.signals.process data/synthetic/mock/emails/clear.txt` | Signal/Planner with Bedrock (optional; needs AWS). Use any day’s folder via `CsvData(path)` if wiring a custom call. |
 
 ## Known limitations
 

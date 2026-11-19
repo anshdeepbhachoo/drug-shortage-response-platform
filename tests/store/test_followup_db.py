@@ -26,11 +26,11 @@ from sqlalchemy import create_engine, text  # noqa: E402
 
 from ingestion.synthetic_loader import load_folder  # noqa: E402
 from ingestion.workflow import followup_tasks, run_workflow  # noqa: E402
-from services.agents.signal_agents import process_email  # noqa: E402
+from services.agents.signals.process import process_email  # noqa: E402
 from services.store.approvals import approve_plan, reject_plan  # noqa: E402
 from services.data.db_data import PostgresData  # noqa: E402
 from services.store.followup_db import approved_transfers, build_agent, run_followup  # noqa: E402
-from services.agents.followup_schemas import SiteReply  # noqa: E402
+from services.agents.followup.schemas import SiteReply  # noqa: E402
 from services.store.results_store import save_pipeline_result  # noqa: E402
 from tests.agents.test_agent import FakeModel, assessment  # noqa: E402
 

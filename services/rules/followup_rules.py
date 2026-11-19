@@ -12,7 +12,7 @@ import math
 from datetime import datetime
 
 from services.rules.checks import filter_options
-from services.agents.followup_schemas import ReplyReading, TransferRequest
+from services.agents.followup.schemas import ReplyReading, TransferRequest
 from services.agents.schemas import Move, PlanOption
 
 # ---------------------------------------------------------

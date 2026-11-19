@@ -1,6 +1,6 @@
 """Run the follow-up agent on the database instead of CSV/JSON files.
 
-Aryan's FollowUpAgent (followup.py) is used unchanged: same rules, model checks,
+Aryan's FollowUpAgent (services/agents/followup/agent.py) is used unchanged: same rules, model checks,
 fallbacks and replanning. This module only feeds it and records what it does:
 
 - Transfers to watch: every transfer action of an *approved* option
@@ -30,8 +30,8 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from services.agents.followup import FollowUpAgent, load_replies
-from services.agents.followup_schemas import FollowUpAction, SiteReply, TransferRequest
+from services.agents.followup.agent import FollowUpAgent, load_replies
+from services.agents.followup.schemas import FollowUpAction, SiteReply, TransferRequest
 
 logger = logging.getLogger(__name__)
 
@@ -212,8 +212,8 @@ def main(argv: list[str] | None = None) -> int:
 
     llm = planner = None
     if args.live:
-        from services.agents.signal_agents import run_agent
-        from services.agents.followup import bedrock_planner
+        from services.agents.bedrock import run_agent
+        from services.agents.followup.agent import bedrock_planner
 
         llm = lambda system, task, registry: run_agent(system, task, registry)
         planner = bedrock_planner

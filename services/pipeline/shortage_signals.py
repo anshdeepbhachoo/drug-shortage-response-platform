@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from services.agents.signal_agents import default_today, process_event
+from services.agents.signals.process import default_today, process_event
 from services.agents.model_io import LLM
 from services.store.results_store import save_pipeline_result
 from services.agents.schemas import SupplyEvent

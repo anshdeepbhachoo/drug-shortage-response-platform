@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from services.agents.signal_agents import _plan_for_event, check_plan, gap_for_event
+from services.agents.signals.planning import _plan_for_event, check_plan, gap_for_event
 from services.rules.checks import check_options
 from services.data.data import CsvData
-from services.agents.orders import ORDER_LEAD_DAYS, check_order, order_option, with_order_option
+from services.agents.orders.options import ORDER_LEAD_DAYS, check_order, order_option, with_order_option
 from services.rules.rules_planner import rules_planner
 from services.agents.schemas import OrderLine, PlanOption, PlanSet, SupplyEvent
 

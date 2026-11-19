@@ -47,7 +47,7 @@ def engine(monkeypatch):
     command.upgrade(config, "head")
     # After the migration: alembic's env.py reloads .env, which would put the model back.
     monkeypatch.delenv("BEDROCK_MODEL_ID", raising=False)   # never call Bedrock from tests
-    monkeypatch.setattr("services.agents.signal_agents.run_agent", _no_bedrock)
+    monkeypatch.setattr("services.agents.bedrock.run_agent", _no_bedrock)
     engine = create_engine(URL)
     yield engine
     engine.dispose()

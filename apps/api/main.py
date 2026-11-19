@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -183,7 +183,7 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
     def run_agent_on_email(body: RunEmail):
         """Run the signal pipeline on a mock supplier email and save the result. Uses Bedrock unless a model is injected."""
 
-        from services.agents.signal_agents import process_email
+        from services.agents.signals.process import process_email
         from services.store.results_store import open_event_for, save_pipeline_result
 
         path = (EMAILS / Path(body.email).name)
@@ -226,7 +226,7 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
     def order_status(order_id: str, body: OrderStatus):
         """A person records what happened to an approved order (placed, received, ...). Nothing is sent."""
 
-        from services.agents.order_agent import OrderStatusError, record_order_status
+        from services.store.order_db import OrderStatusError, record_order_status
 
         try:
             at = datetime.combine(body.as_of, time(12)) if body.as_of else None
@@ -240,8 +240,8 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
         """Procurement releases an order the orchestrator held (above the auto-submit limit); it is then placed
         through the supplier's channel. Simulated unless ORDER_SUBMISSION=live."""
 
-        from services.agents.order_agent import resolve_model
-        from services.agents.ordering.orchestrator import ReleaseError, release_order
+        from services.agents.bedrock import resolve_model
+        from services.agents.orders.placement.orchestrator import ReleaseError, release_order
 
         try:
             at = datetime.combine(body.as_of, time(12)) if body.as_of else None
@@ -281,7 +281,8 @@ def create_app(read_engine: Engine, write_engine: Engine, llm=None) -> FastAPI:
     @app.post("/api/followup/run")
     def run_followup_check(body: RunFollowup):
         from services.store.followup_db import run_followup
-        from services.agents.order_agent import resolve_model, run_order_followup
+        from services.agents.bedrock import resolve_model
+        from services.store.order_db import run_order_followup
 
         def run():
             data = PostgresData(read_engine, as_of=body.as_of)

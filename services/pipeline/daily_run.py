@@ -47,10 +47,11 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from ingestion.synthetic_loader import PROGRESSION_DAYS, load_folder
-from services.agents.signal_agents import process_email, process_event
+from services.agents.signals.process import process_email, process_event
 from services.data.db_data import PostgresData
 from services.store.followup_db import approved_transfers, run_followup
-from services.agents.order_agent import approved_orders, resolve_model, run_order_followup
+from services.agents.bedrock import resolve_model
+from services.store.order_db import approved_orders, run_order_followup
 from services.store.results_store import open_event_for, save_pipeline_result
 from services.rules.rules_planner import rules_planner
 from services.agents.schemas import SupplyEvent

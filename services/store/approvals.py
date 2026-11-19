@@ -28,7 +28,7 @@ import argparse
 import json
 import sys
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from dotenv import load_dotenv
 from sqlalchemy import text
@@ -165,7 +165,7 @@ def recheck_combined(data, din: str, actions: list[dict], detail: dict | None, t
     """A transfer and order option against today's stock: the same checks it passed when it was made
     (orders.check_combined), with the order's dates as given (already shifted to the approval day)."""
 
-    from services.agents.orders import check_combined
+    from services.agents.orders.options import check_combined
     from services.agents.schemas import OrderLine
 
     detail = detail or {}

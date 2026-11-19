@@ -32,7 +32,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from services.agents.model_io import LLM, extract_json, serialize
-from services.agents.ordering.channels import CHANNELS, Channel, LiveConnectorMissing, OrderContext
+from services.agents.orders.placement.channels import Channel, LiveConnectorMissing, OrderContext
 from services.rules.security import inspect_supplier_email
 from services.agents.tools import AgentTool, ToolRegistry
 

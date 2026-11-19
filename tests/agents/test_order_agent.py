@@ -12,16 +12,10 @@ from datetime import date, datetime
 
 import pytest
 
-from services.agents import order_agent
-from services.agents.order_agent import (
-    DECISION_SYSTEM_PROMPT,
-    REQUEST_SYSTEM_PROMPT,
-    OrderAgent,
-    WatchedOrder,
-    allowed_decisions,
-    hard_rule,
-    order_facts,
-)
+from services.agents import bedrock
+from services.agents.orders.agent import DECISION_SYSTEM_PROMPT, REQUEST_SYSTEM_PROMPT, OrderAgent
+from services.agents.orders.schemas import WatchedOrder
+from services.rules.order_rules import allowed_decisions, hard_rule, order_facts
 
 SNAPSHOT = datetime(2026, 11, 15)
 
@@ -160,10 +154,10 @@ def test_a_request_that_changes_the_quantity_falls_back_to_the_template():
 
 def test_bedrock_is_used_when_configured_and_rules_only_when_asked(monkeypatch):
     monkeypatch.setenv("BEDROCK_MODEL_ID", "some-model")
-    assert order_agent.resolve_model(None) is not None
-    assert order_agent.resolve_model(None, use_rules=True) is None
+    assert bedrock.resolve_model(None) is not None
+    assert bedrock.resolve_model(None, use_rules=True) is None
     monkeypatch.delenv("BEDROCK_MODEL_ID")
-    assert order_agent.resolve_model(None) is None
+    assert bedrock.resolve_model(None) is None
 
 
 # ---------------------------------------------------------

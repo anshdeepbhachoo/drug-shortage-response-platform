@@ -16,7 +16,7 @@ import pytest
 
 from services.store.approvals import option_kind
 from services.rules.checks import check_options
-from services.agents.orders import ORDER_LEAD_DAYS, check_combined, combined_option, with_order_option
+from services.agents.orders.options import ORDER_LEAD_DAYS, check_combined, combined_option, with_order_option
 from services.store.results_store import _actions
 from services.agents.schemas import Move, OrderLine, PlanOption, PlanSet
 
@@ -199,7 +199,7 @@ def test_approving_it_records_the_orders_and_both_agents_follow_it_up(engine, mo
 
 
 def test_the_order_agent_counts_the_plans_bridge_transfer_as_arriving():
-    from services.agents.order_agent import order_facts
+    from services.rules.order_rules import order_facts
     from tests.agents.test_order_agent import SNAPSHOT, Data, an_order
 
     now = datetime(2026, 11, 16, 18)
